@@ -1,4 +1,5 @@
 import os
+import re
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -15,8 +16,10 @@ if config.config_file_name is not None:
 
 # Read DATABASE_URL from environment and set it for Alembic.
 # Alembic requires a synchronous driver, so convert asyncpg → psycopg2.
-database_url = os.environ.get("DATABASE_URL", "")
-database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    raise RuntimeError("DATABASE_URL environment variable is required for Alembic migrations")
+database_url = re.sub(r"^postgresql\+[^:]+://", "postgresql://", database_url)
 config.set_main_option("sqlalchemy.url", database_url)
 
 # Import our models so Alembic can detect schema changes for autogenerate.

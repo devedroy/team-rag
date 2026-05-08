@@ -20,6 +20,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+
     # --- sources -----------------------------------------------------------
     op.create_table(
         "sources",
@@ -27,6 +29,7 @@ def upgrade() -> None:
             "id",
             postgresql.UUID(as_uuid=True),
             primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
         sa.Column("source_type", sa.Text(), nullable=False),
@@ -51,6 +54,7 @@ def upgrade() -> None:
             "id",
             postgresql.UUID(as_uuid=True),
             primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
         sa.Column(
@@ -68,6 +72,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
+        sa.UniqueConstraint("source_id", "chunk_index", name="uq_chunks_source_chunk_index"),
     )
 
     # --- acl_tags ----------------------------------------------------------
@@ -83,13 +88,14 @@ def upgrade() -> None:
         sa.Column("tag", sa.Text(), primary_key=True, nullable=False),
     )
 
-    # --- audit_logs --------------------------------------------------------
+    # --- audit_log ---------------------------------------------------------
     op.create_table(
-        "audit_logs",
+        "audit_log",
         sa.Column(
             "id",
             postgresql.UUID(as_uuid=True),
             primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
         sa.Column("caller_id", sa.Text(), nullable=False),
@@ -107,10 +113,12 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
+    op.create_index("ix_audit_log_queried_at", "audit_log", ["queried_at"])
 
 
 def downgrade() -> None:
-    op.drop_table("audit_logs")
+    op.drop_index("ix_audit_log_queried_at", table_name="audit_log")
+    op.drop_table("audit_log")
     op.drop_table("acl_tags")
     op.drop_table("chunks")
     op.drop_table("sources")

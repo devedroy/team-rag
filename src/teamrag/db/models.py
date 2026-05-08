@@ -23,6 +23,7 @@ class Source(Base):
         postgresql.UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+        server_default=sa.text("gen_random_uuid()"),
     )
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
@@ -43,11 +44,15 @@ class Source(Base):
 
 class Chunk(Base):
     __tablename__ = "chunks"
+    __table_args__ = (
+        sa.UniqueConstraint("source_id", "chunk_index", name="uq_chunks_source_chunk_index"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         postgresql.UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+        server_default=sa.text("gen_random_uuid()"),
     )
     source_id: Mapped[uuid.UUID] = mapped_column(
         postgresql.UUID(as_uuid=True),
@@ -86,12 +91,16 @@ class AclTag(Base):
 
 
 class AuditLog(Base):
-    __tablename__ = "audit_logs"
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        sa.Index("ix_audit_log_queried_at", "queried_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         postgresql.UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+        server_default=sa.text("gen_random_uuid()"),
     )
     caller_id: Mapped[str] = mapped_column(Text, nullable=False)
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
