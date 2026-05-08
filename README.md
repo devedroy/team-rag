@@ -4,6 +4,53 @@ A self-hosted, multi-squad RAG (Retrieval-Augmented Generation) knowledge layer 
 
 ---
 
+## Quick Start
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) (v24+)
+- [Docker Compose](https://docs.docker.com/compose/install/) (v2, included with Docker Desktop)
+
+### 1. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` (the defaults in `.env.example` work for local development). Leave `DATABASE_URL` consistent with those credentials.
+
+### 2. Start the stack
+
+```bash
+docker compose up -d
+```
+
+This starts three services: **postgres** (5432), **qdrant** (6333/6334), and **tei** (8080).
+
+> Note: The `tei` service downloads BGE-M3 (~570 MB) on first run. It may take 2–3 minutes before its healthcheck passes.
+
+### 3. Verify all services are healthy
+
+```bash
+docker compose ps
+```
+
+All three services should show `healthy` in the Status column before running any application code.
+
+### 4. Stop the stack
+
+```bash
+docker compose down
+```
+
+Data volumes (`postgres_data`, `qdrant_data`, `tei_cache`) are preserved across restarts. To remove them as well:
+
+```bash
+docker compose down -v
+```
+
+---
+
 ## Table of Contents
 
 1. [Goals & Context](#goals--context)
