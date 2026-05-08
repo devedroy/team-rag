@@ -1,0 +1,15 @@
+# Secrets — never commit
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Test / build artefacts
+.pytest_cache/
+*.egg-info/
+dist/
+
+# Virtual environments
+.venv/
+venv/
