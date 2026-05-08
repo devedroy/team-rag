@@ -12,9 +12,7 @@ class Settings(BaseSettings):
     TEI_URL: str = "http://localhost:8080"
 
     # Relational database (async driver)
-    DATABASE_URL: str = (
-        "postgresql+asyncpg://teamrag:teamrag@localhost:5432/teamrag"
-    )
+    DATABASE_URL: str  # required — set in .env (no default to avoid committing credentials)
 
 
 settings = Settings()
