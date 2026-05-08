@@ -57,9 +57,8 @@ async def test_qdrant_collection_exists():
 
     from teamrag.config import settings
 
+    client = AsyncQdrantClient(url=settings.QDRANT_URL)
     try:
-        client = AsyncQdrantClient(url=settings.QDRANT_URL)
-
         # Check if collection exists; create it if absent (Phase 0 bootstrap)
         try:
             collection_info = await client.get_collection(settings.QDRANT_COLLECTION)
@@ -76,14 +75,12 @@ async def test_qdrant_collection_exists():
                 raise
 
         # Verify vector count is 0 (empty collection in Phase 0)
-        vector_count = collection_info.vectors_count
-        # vectors_count may be None on a brand-new empty collection
+        vector_count = collection_info.points_count
+        # points_count may be None on a brand-new empty collection
         assert vector_count is None or vector_count == 0, (
             f"Expected 0 vectors in collection '{settings.QDRANT_COLLECTION}', "
             f"got {vector_count}"
         )
-
-        await client.close()
 
     except Exception as exc:
         error_str = str(exc).lower()
@@ -93,6 +90,8 @@ async def test_qdrant_collection_exists():
         ):
             pytest.skip(f"Qdrant not reachable at {settings.QDRANT_URL}: {exc}")
         raise
+    finally:
+        await client.close()
 
 
 # ---------------------------------------------------------------------------
