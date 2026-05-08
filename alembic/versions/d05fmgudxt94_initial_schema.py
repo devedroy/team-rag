@@ -122,3 +122,4 @@ def downgrade() -> None:
     op.drop_table("acl_tags")
     op.drop_table("chunks")
     op.drop_table("sources")
+    op.execute("DROP EXTENSION IF EXISTS pgcrypto")

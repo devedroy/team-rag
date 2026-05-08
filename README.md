@@ -29,7 +29,13 @@ This starts three services: **postgres** (5432), **qdrant** (6333/6334), and **t
 
 > Note: The `tei` service downloads BGE-M3 (~570 MB) on first run. It may take 2–3 minutes before its healthcheck passes.
 
-### 3. Verify all services are healthy
+### 3. Run database migrations
+
+```bash
+DATABASE_URL=postgresql+asyncpg://teamrag:teamrag@localhost:5432/teamrag alembic upgrade head
+```
+
+### 4. Verify all services are healthy
 
 ```bash
 docker compose ps
@@ -37,7 +43,7 @@ docker compose ps
 
 All three services should show `healthy` in the Status column before running any application code.
 
-### 4. Stop the stack
+### 5. Stop the stack
 
 ```bash
 docker compose down
