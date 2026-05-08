@@ -123,7 +123,7 @@ async def test_postgres_tables_exist():
         error_str = str(exc).lower()
         if any(
             keyword in error_str
-            for keyword in ("connection", "refused", "timeout", "unreachable", "network", "could not connect")
+            for keyword in ("connection", "refused", "timeout", "unreachable", "network", "could not connect", "connect call failed", "errno 61", "connect")
         ):
             pytest.skip(f"Postgres not reachable: {exc}")
         raise
