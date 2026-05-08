@@ -1,18 +1,18 @@
 """Query endpoint — Phase 0 stub (no vector search logic)."""
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
 
 class QueryRequest(BaseModel):
     query: str
-    top_k: int = 5
+    top_k: int = Field(default=5, ge=1, le=100)
 
 
 class QueryResponse(BaseModel):
-    chunks: list = []
+    chunks: list[dict] = []
     total: int = 0
 
 

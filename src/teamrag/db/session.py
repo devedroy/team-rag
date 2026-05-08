@@ -1,6 +1,8 @@
 """Async SQLAlchemy session factory for TeamRag."""
 
-from collections.abc import AsyncGenerator
+from __future__ import annotations
+
+from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -9,24 +11,30 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from src.teamrag.config import settings
+_engine = None
+_AsyncSessionLocal = None
 
-# Engine is created at module import time, but no real connection is made until
-# the first query is executed (lazy connect behaviour of SQLAlchemy).
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    poolclass=NullPool,
-    echo=False,
-)
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+def _get_engine():
+    global _engine
+    if _engine is None:
+        from teamrag.config import settings
+        _engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+    return _engine
+
+
+def _get_session_factory():
+    global _AsyncSessionLocal
+    if _AsyncSessionLocal is None:
+        _AsyncSessionLocal = async_sessionmaker(
+            bind=_get_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _AsyncSessionLocal
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields a single AsyncSession per request."""
-    async with AsyncSessionLocal() as session:
+    factory = _get_session_factory()
+    async with factory() as session:
         yield session

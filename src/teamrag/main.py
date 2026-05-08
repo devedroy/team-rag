@@ -5,11 +5,11 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 
-from src.teamrag.api.health import router as health_router
-from src.teamrag.api.query import router as query_router
-from src.teamrag.config import settings
+from teamrag.api.health import router as health_router
+from teamrag.api.query import router as query_router
+from teamrag.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     does not prevent the app from starting.
     """
     try:
-        client = QdrantClient(url=settings.QDRANT_URL)
-        client.get_collections()
+        async with AsyncQdrantClient(url=settings.QDRANT_URL) as client:
+            await client.get_collections()
         logger.info("Qdrant is reachable at %s", settings.QDRANT_URL)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
