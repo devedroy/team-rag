@@ -17,6 +17,19 @@ logger = logging.getLogger(__name__)
 _GITHUB_API = "https://api.github.com"
 
 
+def _normalize_repo(repo: str) -> str:
+    """Convert any repo format to 'owner/repo'.
+
+    Accepts: 'owner/repo', 'https://github.com/owner/repo', '...repo.git'
+    """
+    repo = repo.strip().rstrip("/")
+    if repo.startswith("https://github.com/"):
+        repo = repo[len("https://github.com/"):]
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    return repo
+
+
 def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in (429, 500, 502, 503, 504)
@@ -56,6 +69,7 @@ class GitHubClient:
 
     async def fetch_merged_prs(self, repo: str) -> AsyncIterator[dict]:
         """Yield merged PRs for *repo* in reverse-update order, up to GITHUB_MAX_PRS."""
+        repo = _normalize_repo(repo)
         url = f"{_GITHUB_API}/repos/{repo}/pulls"
         params: dict = {
             "state": "closed",
@@ -81,16 +95,19 @@ class GitHubClient:
 
     async def fetch_review_comments(self, repo: str, pr_number: int) -> list[dict]:
         """Return all review objects for a PR (each has a `body` field)."""
+        repo = _normalize_repo(repo)
         url = f"{_GITHUB_API}/repos/{repo}/pulls/{pr_number}/reviews"
         return (await self._get(url)).json()
 
     async def fetch_inline_comments(self, repo: str, pr_number: int) -> list[dict]:
         """Return diff-level (inline) comments for a PR."""
+        repo = _normalize_repo(repo)
         url = f"{_GITHUB_API}/repos/{repo}/pulls/{pr_number}/comments"
         return (await self._get(url)).json()
 
     async def fetch_issue_body(self, repo: str, issue_number: int) -> str | None:
         """Return the body of a linked issue, or None if not found."""
+        repo = _normalize_repo(repo)
         url = f"{_GITHUB_API}/repos/{repo}/issues/{issue_number}"
         try:
             return (await self._get(url)).json().get("body")
