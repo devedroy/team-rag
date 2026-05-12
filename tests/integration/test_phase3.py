@@ -100,6 +100,7 @@ async def test_chat_completions_includes_source_url():
 
     # Create Qdrant client and ensure collection exists
     qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
+    test_chunk_id = None
     try:
         try:
             await qdrant_client.get_collection(settings.QDRANT_COLLECTION)
@@ -160,13 +161,14 @@ async def test_chat_completions_includes_source_url():
 
     finally:
         # Clean up: delete test point and restore app state
-        try:
-            await qdrant_client.delete(
-                collection_name=settings.QDRANT_COLLECTION,
-                points_selector=PointIdsList(points=[test_chunk_id]),
-            )
-        except Exception as exc:
-            logger.warning("Failed to delete test chunk: %s", exc)
+        if test_chunk_id is not None:
+            try:
+                await qdrant_client.delete(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    points_selector=PointIdsList(points=[test_chunk_id]),
+                )
+            except Exception as exc:
+                logger.warning("Failed to delete test chunk: %s", exc)
 
         app.state.qdrant_client = None
         await qdrant_client.close()

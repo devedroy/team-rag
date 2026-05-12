@@ -19,7 +19,7 @@ from teamrag.services.retrieval import ChunkResult, retrieve_chunks
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_SYSTEM_PROMPT_TEMPLATE = """\
+_SYSTEM_PROMPT_PREFIX = """\
 You are a helpful assistant for an engineering team. Answer questions using ONLY the provided context chunks.
 For each factual claim, cite the source with [Source N]. At the end of your response, list:
 [Source 1]: <url>
@@ -27,7 +27,7 @@ For each factual claim, cite the source with [Source N]. At the end of your resp
 If no relevant context is found, say so clearly.
 
 Context:
-{context_blocks}"""
+"""
 
 
 class ChatMessage(BaseModel):
@@ -57,7 +57,7 @@ def _build_augmented_messages(
     chunks: list[ChunkResult],
 ) -> list[dict[str, str]]:
     context_blocks = _build_context_blocks(chunks)
-    system_content = _SYSTEM_PROMPT_TEMPLATE.format(context_blocks=context_blocks)
+    system_content = _SYSTEM_PROMPT_PREFIX + context_blocks
 
     augmented: list[dict[str, str]] = [{"role": "system", "content": system_content}]
     for msg in original_messages:
