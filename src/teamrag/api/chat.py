@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from teamrag.config import settings
@@ -167,13 +167,13 @@ def _empty_non_streaming_response(content: str) -> dict[str, Any]:
     }
 
 
-@router.post("/chat/completions", response_class=StreamingResponse)
+@router.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest, http_request: Request):
     if not settings.LLM_BASE_URL:
         msg = "LLM_BASE_URL is not configured. Set it in .env to enable chat completions."
         if request.stream:
             return _empty_streaming_response(msg)
-        return _empty_non_streaming_response(msg)
+        return JSONResponse(content=_empty_non_streaming_response(msg))
 
     user_messages = [m for m in request.messages if m.role == "user"]
     if not user_messages:
@@ -198,4 +198,5 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
 
     if request.stream:
         return await _stream_llm_response(augmented_messages, model)
-    return await _non_streaming_llm_response(augmented_messages, model)
+    response_data = await _non_streaming_llm_response(augmented_messages, model)
+    return JSONResponse(content=response_data)
