@@ -14,5 +14,12 @@ class Settings(BaseSettings):
     # Relational database (async driver)
     DATABASE_URL: str = "postgresql+asyncpg://teamrag:teamrag@localhost:5432/teamrag"
 
+    # Confluence connector
+    CONFLUENCE_URL: str = "https://your-org.atlassian.net"
+    CONFLUENCE_USERNAME: str = ""
+    CONFLUENCE_API_TOKEN: str = ""
+    CONFLUENCE_SPACE_KEYS: str = ""          # comma-separated, e.g. "ENG,ARCH"
+    CONFLUENCE_MAX_PAGES: int = 500
+
 
 settings = Settings()
