@@ -7,6 +7,7 @@ import logging
 import httpx
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
+from qdrant_client import AsyncQdrantClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,8 +48,8 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
 
     qdrant_client = getattr(http_request.app.state, "qdrant_client", None)
     if qdrant_client is None:
-        logger.warning("Qdrant client not available — returning empty results")
-        return QueryResponse(chunks=[], total=0)
+        # If not available in app.state (e.g., during testing), create a temporary client
+        qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
 
     try:
         vector = await _embed_query(request.query, settings.TEI_URL)
@@ -57,18 +58,18 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
         return QueryResponse(chunks=[], total=0)
 
     try:
-        results = await qdrant_client.search(
+        results = await qdrant_client.query_points(
             collection_name=settings.QDRANT_COLLECTION,
-            query_vector=vector,
+            query=vector,
             limit=request.top_k,
             with_payload=True,
         )
     except Exception as exc:
-        logger.warning("Qdrant search failed: %s — returning empty results", exc)
+        logger.warning("Qdrant query failed: %s — returning empty results", exc)
         return QueryResponse(chunks=[], total=0)
 
     chunks = []
-    for hit in results:
+    for hit in results.points:
         payload = hit.payload or {}
         chunks.append(
             ChunkResult(

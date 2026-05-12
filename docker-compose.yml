@@ -34,6 +34,7 @@ services:
 
   tei:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+    platform: linux/amd64
     command: ["--model-id", "BAAI/bge-m3"]
     ports:
       - "8080:80"

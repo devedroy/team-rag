@@ -38,7 +38,8 @@ async def _run_confluence() -> None:
 
     confluence = ConfluenceClient(settings)
 
-    async with AsyncQdrantClient(url=settings.QDRANT_URL) as qdrant:
+    qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+    try:
         # Ensure collection exists
         try:
             await qdrant.get_collection(settings.QDRANT_COLLECTION)
@@ -70,11 +71,13 @@ async def _run_confluence() -> None:
                     chunks_total,
                 )
 
-    logger.info(
-        "Ingestion complete: %d pages processed, %d chunks indexed",
-        pages_processed,
-        chunks_total,
-    )
+        logger.info(
+            "Ingestion complete: %d pages processed, %d chunks indexed",
+            pages_processed,
+            chunks_total,
+        )
+    finally:
+        await qdrant.close()
 
 
 def main() -> None:

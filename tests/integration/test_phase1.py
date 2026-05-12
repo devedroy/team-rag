@@ -113,7 +113,8 @@ async def test_ingest_is_idempotent():
     from teamrag.ingest.confluence import ConfluenceClient
     from teamrag.ingest.pipeline import chunk_document, embed_chunks, upsert_to_qdrant
 
-    async with AsyncQdrantClient(url=settings.QDRANT_URL) as qdrant:
+    qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+    try:
         await _ensure_collection(qdrant, settings.QDRANT_COLLECTION)
 
         confluence = ConfluenceClient(settings)
@@ -153,3 +154,5 @@ async def test_ingest_is_idempotent():
             f"Point count changed from {count_after_first} to {count_after_second} on second "
             "ingest of the same page — upsert is not idempotent"
         )
+    finally:
+        await qdrant.close()
