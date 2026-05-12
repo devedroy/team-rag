@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import time
 from collections.abc import AsyncIterator
 
 import httpx
@@ -109,7 +110,8 @@ class GitHubClient:
         reraise=True,
     )
     async def _get(self, url: str, params: dict | None = None) -> httpx.Response:
-        assert self._http is not None, "Must be used as async context manager"
+        if self._http is None:
+            raise RuntimeError("GitHubClient must be used as an async context manager")
         response = await self._http.get(url, params=params)
         await self._maybe_sleep_for_rate_limit(response)
         response.raise_for_status()
@@ -119,7 +121,6 @@ class GitHubClient:
         remaining = int(response.headers.get("X-RateLimit-Remaining", "100"))
         if remaining < 5:
             reset_ts = int(response.headers.get("X-RateLimit-Reset", "0"))
-            import time
             wait = max(0, reset_ts - int(time.time()))
             if wait > 0:
                 logger.warning(
