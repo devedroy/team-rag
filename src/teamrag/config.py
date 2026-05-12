@@ -21,5 +21,10 @@ class Settings(BaseSettings):
     CONFLUENCE_SPACE_KEYS: str = ""          # comma-separated, e.g. "ENG,ARCH"
     CONFLUENCE_MAX_PAGES: int = 500
 
+    # GitHub connector
+    GITHUB_TOKEN: str = ""
+    GITHUB_REPOS: str = ""            # comma-separated, e.g. "org/repo1,org/repo2"
+    GITHUB_MAX_PRS: int = 200
+
 
 settings = Settings()
