@@ -100,6 +100,17 @@ async def _run_github_ingest(settings) -> None:
 @pytest.mark.asyncio
 async def test_qdrant_point_count_increases(settings, qdrant_client):
     """Point count after GitHub ingest must be greater than before."""
+    from qdrant_client.models import Filter
+
+    # Delete all points to test fresh ingest (idempotent upserts won't increase count)
+    try:
+        await qdrant_client.delete(
+            collection_name=settings.QDRANT_COLLECTION,
+            points_selector=Filter(),
+        )
+    except Exception:
+        pass  # Collection might not exist yet
+
     info_before = await qdrant_client.get_collection(settings.QDRANT_COLLECTION)
     count_before = info_before.points_count or 0
 
