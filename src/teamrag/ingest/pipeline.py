@@ -67,3 +67,108 @@ def _stable_chunk_id(page_id: str, chunk_index: int) -> str:
 def _make_llama_doc(markdown: str, page_id: str):
     from llama_index.core import Document
     return Document(text=markdown, doc_id=page_id)
+
+
+async def embed_chunks(chunks: list[dict], tei_url: str) -> list[list[float]]:
+    """Embed chunk contents via TEI /embed endpoint.
+
+    Returns one embedding vector per chunk, in the same order.
+    """
+    import httpx
+
+    texts = [c["content"] for c in chunks]
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            f"{tei_url.rstrip('/')}/embed",
+            json={"inputs": texts},
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def upsert_to_qdrant(
+    chunks: list[dict],
+    vectors: list[list[float]],
+    qdrant_client,
+    collection_name: str,
+) -> None:
+    """Upsert chunk vectors into Qdrant — idempotent (existing IDs are overwritten)."""
+    from qdrant_client.models import PointStruct
+
+    points = []
+    for chunk, vector in zip(chunks, vectors):
+        # Convert first 16 hex chars of SHA256 chunk_id to an unsigned 64-bit int for Qdrant
+        hex_id = chunk["chunk_id"]
+        point_id = int(hex_id[:16], 16)
+        points.append(
+            PointStruct(
+                id=point_id,
+                vector=vector,
+                payload={
+                    "content": chunk["content"],
+                    "source_url": chunk["url"],
+                    "page_title": chunk["page_title"],
+                    "last_updated": chunk["last_updated"],
+                    "space_key": chunk["space_key"],
+                    "page_id": chunk["page_id"],
+                    "chunk_index": chunk["chunk_index"],
+                },
+            )
+        )
+
+    await qdrant_client.upsert(collection_name=collection_name, points=points)
+    logger.info("Upserted %d points into Qdrant collection '%s'", len(points), collection_name)
+
+
+async def write_to_postgres(page: dict, chunks: list[dict], session, confluence_base_url: str) -> None:
+    """Upsert one Source row and one Chunk row per chunk into Postgres."""
+    from datetime import datetime
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from teamrag.db.models import Source, Chunk as ChunkModel
+
+    page_id = page["id"]
+    page_title = page.get("title", "")
+    web_ui_path = page.get("_links", {}).get("webui", "")
+    source_url = f"{confluence_base_url.rstrip('/')}{web_ui_path}"
+    last_updated_str = page.get("version", {}).get("when", "")
+    last_updated = None
+    if last_updated_str:
+        try:
+            last_updated = datetime.fromisoformat(last_updated_str.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    # Upsert Source row (keyed on source_url)
+    stmt = pg_insert(Source).values(
+        source_type="confluence",
+        source_url=source_url,
+        page_title=page_title,
+        last_updated=last_updated,
+    ).on_conflict_do_update(
+        index_elements=["source_url"],
+        set_={"page_title": page_title, "last_updated": last_updated},
+    ).returning(Source.id)
+    result = await session.execute(stmt)
+    source_id = result.scalar_one()
+
+    # Upsert Chunk rows
+    for chunk in chunks:
+        chunk_stmt = pg_insert(ChunkModel).values(
+            source_id=source_id,
+            content=chunk["content"],
+            chunk_index=chunk["chunk_index"],
+            chunk_metadata={
+                "space_key": chunk["space_key"],
+                "page_id": chunk["page_id"],
+                "last_updated": chunk["last_updated"],
+            },
+        ).on_conflict_do_update(
+            constraint="uq_chunks_source_chunk_index",
+            set_={"content": chunk["content"]},
+        )
+        await session.execute(chunk_stmt)
+
+    await session.commit()
+    logger.info("Wrote source + %d chunks to Postgres for page %s", len(chunks), page_id)
