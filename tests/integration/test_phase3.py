@@ -14,6 +14,7 @@ Requires Docker stack running: Qdrant, Postgres, TEI, FastAPI.
 
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
@@ -21,15 +22,20 @@ from httpx import ASGITransport, AsyncClient
 
 from teamrag.main import app
 
+logger = logging.getLogger(__name__)
+
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    bool(LLM_BASE_URL),
+    reason="LLM_BASE_URL is set — this test covers the unconfigured path only",
+)
 async def test_chat_completions_returns_200():
     """POST /v1/chat/completions returns 200 with valid OpenAI response shape.
 
-    This test runs regardless of LLM_BASE_URL; when not set, the endpoint
-    returns a graceful message in OpenAI format rather than a 500 error.
+    Verifies the graceful degradation path when LLM_BASE_URL is not configured.
     """
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -82,24 +88,24 @@ async def test_chat_completions_includes_source_url():
     """
     from teamrag.config import settings
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import Distance, VectorParams
+    from qdrant_client.models import Distance, VectorParams, PointIdsList
+    import uuid
 
-    # Ensure collection exists
-    qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+    # Create Qdrant client and ensure collection exists
+    qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
     try:
         try:
-            await qdrant.get_collection(settings.QDRANT_COLLECTION)
+            await qdrant_client.get_collection(settings.QDRANT_COLLECTION)
         except Exception:
             # Collection doesn't exist; create it
-            await qdrant.create_collection(
+            await qdrant_client.create_collection(
                 collection_name=settings.QDRANT_COLLECTION,
                 vectors_config=VectorParams(size=768, distance=Distance.COSINE),
             )
 
         # Insert a test chunk with a source URL
-        import uuid
         test_chunk_id = str(uuid.uuid4())
-        await qdrant.upsert(
+        await qdrant_client.upsert(
             collection_name=settings.QDRANT_COLLECTION,
             points=[
                 {
@@ -113,6 +119,10 @@ async def test_chat_completions_includes_source_url():
                 }
             ],
         )
+
+        # Set the Qdrant client on app state for the ASGI request
+        # (ASGITransport does not run the lifespan, so we must do this manually)
+        app.state.qdrant_client = qdrant_client
 
         # Send a query that should retrieve the test chunk
         async with AsyncClient(
@@ -134,14 +144,24 @@ async def test_chat_completions_includes_source_url():
         choice = body["choices"][0]
         response_content = choice["message"]["content"]
 
-        # The response should mention the source URL or cite it
+        # The response should mention the source URL
         # (The system prompt instructs the LLM to cite sources)
-        assert "https://example.com/python-guide" in response_content or "Source" in response_content, (
-            f"Expected source URL or citation in response, but got: {response_content}"
+        assert "https://example.com/python-guide" in response_content, (
+            f"Expected source URL in response, but got: {response_content}"
         )
 
     finally:
-        await qdrant.close()
+        # Clean up: delete test point and restore app state
+        try:
+            await qdrant_client.delete(
+                collection_name=settings.QDRANT_COLLECTION,
+                points_selector=PointIdsList(points=[test_chunk_id]),
+            )
+        except Exception as exc:
+            logger.warning("Failed to delete test chunk: %s", exc)
+
+        app.state.qdrant_client = None
+        await qdrant_client.close()
 
 
 @pytest.mark.asyncio
@@ -157,9 +177,9 @@ async def test_open_webui_health():
         async with AsyncClient() as client:
             response = await client.get(openwebui_url, timeout=5.0)
         # Open WebUI returns various status codes (200, 301, etc.)
-        # We just care that it's reachable (no connection error)
-        assert response.status_code >= 200, (
-            f"Expected 2xx/3xx from Open WebUI at {openwebui_url}, got {response.status_code}"
+        # We just care that it's reachable (not a 5xx error)
+        assert response.status_code < 500, (
+            f"Open WebUI returned unexpected status {response.status_code}"
         )
     except Exception as exc:
         error_str = str(exc).lower()
