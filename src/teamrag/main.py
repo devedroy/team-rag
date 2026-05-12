@@ -18,23 +18,28 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler.
 
-    On startup: attempt to ping Qdrant. Logs a WARNING if unreachable but
-    does not prevent the app from starting.
+    On startup: connect to Qdrant and store client on app.state.
+    On shutdown: close the Qdrant client.
     """
+    qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
     try:
-        async with AsyncQdrantClient(url=settings.QDRANT_URL) as client:
-            await client.get_collections()
+        await qdrant_client.get_collections()
         logger.info("Qdrant is reachable at %s", settings.QDRANT_URL)
-    except Exception as exc:  # noqa: BLE001
+        app.state.qdrant_client = qdrant_client
+    except Exception as exc:
         logger.warning(
             "Qdrant is not reachable at %s — continuing without vector store: %s",
             settings.QDRANT_URL,
             exc,
         )
+        app.state.qdrant_client = None
 
-    yield  # application runs here
+    yield
 
-    # Shutdown: nothing to clean up in Phase 0
+    try:
+        await qdrant_client.close()
+    except Exception as exc:
+        logger.warning("Error closing Qdrant client: %s", exc)
 
 
 app = FastAPI(
