@@ -128,3 +128,75 @@ class GitHubClient:
                     remaining, wait,
                 )
                 await asyncio.sleep(wait)
+
+
+def assemble_pr_document(
+    pr: dict,
+    reviews: list[dict],
+    inline_comments: list[dict],
+    issue_bodies: list[str],
+) -> str:
+    """Combine all PR content into one queryable document string."""
+    parts: list[str] = []
+
+    title = pr.get("title", "")
+    body = (pr.get("body") or "").strip()
+    if title or body:
+        parts.append(f"# {title}\n{body}".strip())
+
+    review_texts = [r.get("body", "").strip() for r in reviews if r.get("body", "").strip()]
+    if review_texts:
+        parts.append("## Reviews\n" + "\n\n".join(review_texts))
+
+    inline_texts = [c.get("body", "").strip() for c in inline_comments if c.get("body", "").strip()]
+    if inline_texts:
+        parts.append("## Inline Comments\n" + "\n\n".join(inline_texts))
+
+    nonempty_issues = [b.strip() for b in issue_bodies if b and b.strip()]
+    if nonempty_issues:
+        parts.append("## Linked Issues\n" + "\n\n".join(nonempty_issues))
+
+    return "\n\n".join(parts)
+
+
+def chunk_pr_document(pr: dict, document: str) -> list[dict]:
+    """Split a PR document into chunks with full metadata."""
+    from llama_index.core import Document
+    from llama_index.core.node_parser import SentenceSplitter
+
+    repo = pr["base"]["repo"]["full_name"]
+    pr_number = pr["number"]
+    pr_title = pr.get("title", "")
+    author = pr.get("user", {}).get("login", "")
+    merged_at = pr.get("merged_at", "")
+    source_url = f"https://github.com/{repo}/pull/{pr_number}"
+
+    splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
+    nodes = splitter.get_nodes_from_documents([Document(text=document)])
+
+    chunks: list[dict] = []
+    for idx, node in enumerate(nodes):
+        text = node.get_content().strip()
+        if not text:
+            continue
+        chunk_id = hashlib.sha256(f"{repo}:{pr_number}:{idx}".encode()).hexdigest()
+        chunks.append({
+            "chunk_id": chunk_id,
+            "content": text,
+            "pr_number": pr_number,
+            "pr_title": pr_title,
+            "author": author,
+            "merged_at": merged_at,
+            "repo": repo,
+            "source_url": source_url,
+            "chunk_index": idx,
+            # Compat fields for the shared upsert_to_qdrant function
+            "url": source_url,
+            "page_title": pr_title,
+            "last_updated": merged_at,
+            "space_key": repo,
+            "page_id": f"{repo}:{pr_number}",
+        })
+
+    logger.info("PR #%d chunked into %d chunks", pr_number, len(chunks))
+    return chunks
