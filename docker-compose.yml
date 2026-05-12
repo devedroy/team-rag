@@ -48,7 +48,20 @@ services:
       start_period: 120s
     restart: unless-stopped
 
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "${OPENWEBUI_PORT:-3000}:8080"
+    environment:
+      OPENAI_API_BASE_URL: ${TEAMRAG_API_URL:-http://host.docker.internal:8000}/v1
+      OPENAI_API_KEY: ${OPENWEBUI_OPENAI_KEY:-sk-default-key}
+      WEBUI_AUTH: "false"
+    volumes:
+      - open-webui:/app/backend/data
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   qdrant_data:
   tei_cache:
+  open-webui:
