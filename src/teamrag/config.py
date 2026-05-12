@@ -31,5 +31,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "gpt-4o-mini"
 
+    # RAG retrieval
+    RAG_TOP_K: int = 5
+
 
 settings = Settings()

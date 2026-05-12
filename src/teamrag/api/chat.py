@@ -11,10 +11,10 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from teamrag.api.query import ChunkResult, _embed_query
 from teamrag.config import settings
+from teamrag.services.retrieval import ChunkResult, retrieve_chunks
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -39,7 +39,6 @@ class ChatCompletionRequest(BaseModel):
     model: str = ""
     messages: list[ChatMessage]
     stream: bool = False
-    top_k: int = Field(default=5, ge=1, le=100)
 
 
 def _build_context_blocks(chunks: list[ChunkResult]) -> str:
@@ -67,36 +66,12 @@ def _build_augmented_messages(
     return augmented
 
 
-async def _retrieve_chunks(query: str, top_k: int, qdrant_client: Any) -> list[ChunkResult]:
-    try:
-        vector = await _embed_query(query, settings.TEI_URL)
-    except Exception as exc:
-        logger.warning("TEI embedding failed during chat retrieval: %s", exc)
-        return []
-
-    try:
-        results = await qdrant_client.query_points(
-            collection_name=settings.QDRANT_COLLECTION,
-            query=vector,
-            limit=top_k,
-            with_payload=True,
-        )
-    except Exception as exc:
-        logger.warning("Qdrant query failed during chat retrieval: %s", exc)
-        return []
-
-    chunks: list[ChunkResult] = []
-    for hit in results.points:
-        payload = hit.payload or {}
-        chunks.append(
-            ChunkResult(
-                content=payload.get("content", ""),
-                source_url=payload.get("source_url", ""),
-                page_title=payload.get("page_title", ""),
-                score=hit.score,
-            )
-        )
-    return chunks
+def _build_llm_headers() -> dict[str, str]:
+    """Build headers for LLM requests; only sends Authorization when API key is set."""
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if settings.LLM_API_KEY:
+        headers["Authorization"] = f"Bearer {settings.LLM_API_KEY}"
+    return headers
 
 
 async def _stream_llm_response(
@@ -104,10 +79,7 @@ async def _stream_llm_response(
     model: str,
 ) -> StreamingResponse:
     llm_url = f"{settings.LLM_BASE_URL.rstrip('/')}/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {settings.LLM_API_KEY}",
-    }
+    headers = _build_llm_headers()
     payload = {
         "model": model or settings.LLM_MODEL,
         "messages": augmented_messages,
@@ -115,12 +87,17 @@ async def _stream_llm_response(
     }
 
     async def event_generator():
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream("POST", llm_url, headers=headers, json=payload) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if line:
-                        yield f"{line}\n\n"
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream("POST", llm_url, headers=headers, json=payload) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if line:
+                            yield f"{line}\n\n"
+        except Exception as exc:
+            logger.error("LLM streaming failed: %s", exc)
+            yield 'data: {"error": "LLM backend error"}\n\n'
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -130,19 +107,20 @@ async def _non_streaming_llm_response(
     model: str,
 ) -> dict[str, Any]:
     llm_url = f"{settings.LLM_BASE_URL.rstrip('/')}/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {settings.LLM_API_KEY}",
-    }
+    headers = _build_llm_headers()
     payload = {
         "model": model or settings.LLM_MODEL,
         "messages": augmented_messages,
         "stream": False,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(llm_url, headers=headers, json=payload)
-        resp.raise_for_status()
-        return resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(llm_url, headers=headers, json=payload)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.error("LLM backend returned error status: %s", exc)
+        raise HTTPException(status_code=502, detail=f"LLM backend error: {exc.response.status_code}") from exc
 
 
 def _empty_streaming_response(content: str) -> StreamingResponse:
@@ -188,7 +166,7 @@ def _empty_non_streaming_response(content: str) -> dict[str, Any]:
     }
 
 
-@router.post("/chat/completions")
+@router.post("/chat/completions", response_class=StreamingResponse)
 async def chat_completions(request: ChatCompletionRequest, http_request: Request):
     if not settings.LLM_BASE_URL:
         msg = "LLM_BASE_URL is not configured. Set it in .env to enable chat completions."
@@ -203,7 +181,13 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
 
     qdrant_client = getattr(http_request.app.state, "qdrant_client", None)
     if qdrant_client is not None:
-        chunks = await _retrieve_chunks(retrieval_query, request.top_k, qdrant_client)
+        chunks = await retrieve_chunks(
+            query=retrieval_query,
+            qdrant_client=qdrant_client,
+            collection=settings.QDRANT_COLLECTION,
+            tei_url=settings.TEI_URL,
+            top_k=settings.RAG_TOP_K,
+        )
     else:
         logger.warning("Qdrant client unavailable — proceeding without context chunks")
         chunks = []
