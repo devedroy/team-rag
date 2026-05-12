@@ -118,9 +118,10 @@ async def _non_streaming_llm_response(
             resp = await client.post(llm_url, headers=headers, json=payload)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPStatusError as exc:
-        logger.error("LLM backend returned error status: %s", exc)
-        raise HTTPException(status_code=502, detail=f"LLM backend error: {exc.response.status_code}") from exc
+    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+        logger.error("LLM backend error: %s", exc)
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else 502
+        raise HTTPException(status_code=502, detail=f"LLM backend error: {status}") from exc
 
 
 def _empty_streaming_response(content: str) -> StreamingResponse:
