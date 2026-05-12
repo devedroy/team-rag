@@ -87,9 +87,16 @@ async def test_chat_completions_includes_source_url():
     Skips gracefully if LLM_BASE_URL is not set.
     """
     from teamrag.config import settings
+    from teamrag.services.retrieval import embed_query
     from qdrant_client import AsyncQdrantClient
     from qdrant_client.models import Distance, VectorParams, PointIdsList
     import uuid
+
+    # TEI must be reachable for retrieval to work; skip if not available
+    try:
+        await embed_query("preflight", settings.TEI_URL)
+    except Exception as exc:
+        pytest.skip(f"TEI embedding service not reachable — cannot exercise retrieval path: {exc}")
 
     # Create Qdrant client and ensure collection exists
     qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
@@ -144,8 +151,9 @@ async def test_chat_completions_includes_source_url():
         choice = body["choices"][0]
         response_content = choice["message"]["content"]
 
-        # The response should mention the source URL
-        # (The system prompt instructs the LLM to cite sources)
+        # The response should cite the source URL per the system prompt instructions.
+        # Note: this assertion is LLM-dependent — if the model paraphrases without
+        # quoting the URL exactly, this will fail. Run manually against a known-good LLM.
         assert "https://example.com/python-guide" in response_content, (
             f"Expected source URL in response, but got: {response_content}"
         )
