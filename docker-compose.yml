@@ -54,7 +54,7 @@ services:
       - "${OPENWEBUI_PORT:-3000}:8080"
     environment:
       OPENAI_API_BASE_URL: ${TEAMRAG_API_URL:-http://host.docker.internal:8000}/v1
-      OPENAI_API_KEY: ${OPENWEBUI_OPENAI_KEY:-sk-default-key}
+      OPENAI_API_KEY: ${LLM_API_KEY}
       WEBUI_AUTH: "false"
     volumes:
       - open-webui:/app/backend/data
