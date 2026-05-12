@@ -200,3 +200,67 @@ def chunk_pr_document(pr: dict, document: str) -> list[dict]:
 
     logger.info("PR #%d chunked into %d chunks", pr_number, len(chunks))
     return chunks
+
+
+async def write_github_to_postgres(pr: dict, chunks: list[dict], session) -> None:
+    """Upsert one Source row and one Chunk row per chunk into Postgres."""
+    from datetime import datetime
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from teamrag.db.models import Chunk as ChunkModel
+    from teamrag.db.models import Source
+
+    repo = pr["base"]["repo"]["full_name"]
+    pr_number = pr["number"]
+    pr_title = pr.get("title", "")
+    source_url = f"https://github.com/{repo}/pull/{pr_number}"
+
+    merged_at_str = pr.get("merged_at") or ""
+    merged_at = None
+    if merged_at_str:
+        try:
+            merged_at = datetime.fromisoformat(merged_at_str.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    stmt = (
+        pg_insert(Source)
+        .values(
+            source_type="github",
+            source_url=source_url,
+            page_title=pr_title,
+            last_updated=merged_at,
+        )
+        .on_conflict_do_update(
+            index_elements=["source_url"],
+            set_={"page_title": pr_title, "last_updated": merged_at},
+        )
+        .returning(Source.id)
+    )
+    result = await session.execute(stmt)
+    source_id = result.scalar_one()
+
+    for chunk in chunks:
+        chunk_stmt = (
+            pg_insert(ChunkModel)
+            .values(
+                source_id=source_id,
+                content=chunk["content"],
+                chunk_index=chunk["chunk_index"],
+                chunk_metadata={
+                    "pr_number": chunk["pr_number"],
+                    "author": chunk["author"],
+                    "repo": chunk["repo"],
+                    "merged_at": chunk["merged_at"],
+                },
+            )
+            .on_conflict_do_update(
+                constraint="uq_chunks_source_chunk_index",
+                set_={"content": chunk["content"]},
+            )
+        )
+        await session.execute(chunk_stmt)
+
+    await session.commit()
+    logger.info("Wrote source + %d chunks to Postgres for PR %s#%d", len(chunks), repo, pr_number)

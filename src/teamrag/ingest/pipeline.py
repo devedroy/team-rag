@@ -99,28 +99,30 @@ async def upsert_to_qdrant(
     qdrant_client,
     collection_name: str,
 ) -> None:
-    """Upsert chunk vectors into Qdrant — idempotent (existing IDs are overwritten)."""
+    """Upsert chunk vectors into Qdrant — idempotent (existing IDs are overwritten).
+
+    Handles both Confluence chunks (with 'url', 'page_title') and GitHub chunks
+    (with 'source_url', 'pr_title') by checking both field names.
+    """
     from qdrant_client.models import PointStruct
 
     points = []
     for chunk, vector in zip(chunks, vectors):
-        # Convert first 16 hex chars of SHA256 chunk_id to an unsigned 64-bit int for Qdrant
         hex_id = chunk["chunk_id"]
         point_id = int(hex_id[:16], 16)
+        payload: dict = {
+            "content": chunk["content"],
+            "source_url": chunk.get("url", chunk.get("source_url", "")),
+            "page_title": chunk.get("page_title", ""),
+            "last_updated": chunk.get("last_updated", ""),
+            "chunk_index": chunk["chunk_index"],
+        }
+        # Include optional source-specific fields when present
+        for key in ("space_key", "page_id", "pr_number", "pr_title", "author", "merged_at", "repo"):
+            if key in chunk:
+                payload[key] = chunk[key]
         points.append(
-            PointStruct(
-                id=point_id,
-                vector=vector,
-                payload={
-                    "content": chunk["content"],
-                    "source_url": chunk["url"],
-                    "page_title": chunk["page_title"],
-                    "last_updated": chunk["last_updated"],
-                    "space_key": chunk["space_key"],
-                    "page_id": chunk["page_id"],
-                    "chunk_index": chunk["chunk_index"],
-                },
-            )
+            PointStruct(id=point_id, vector=vector, payload=payload)
         )
 
     await qdrant_client.upsert(collection_name=collection_name, points=points)
