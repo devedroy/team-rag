@@ -5,4 +5,7 @@ curl -sf --max-time 10 --connect-timeout 5 "$BASE_URL/health" | grep '"status":"
 curl -sf --max-time 10 --connect-timeout 5 -X POST "$BASE_URL/query" \
   -H "Content-Type: application/json" \
   -d '{"query":"test","top_k":5}' | grep '"chunks":\[\]'
+curl -sf --max-time 10 --connect-timeout 5 -X POST "$BASE_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"test"}]}' | grep '"object":"chat.completion"'
 echo "Smoke test passed."
