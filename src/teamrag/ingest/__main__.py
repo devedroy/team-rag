@@ -16,6 +16,23 @@ async def _run_confluence() -> None:
 
     from teamrag.config import settings
     from teamrag.db.session import get_session
+
+    # Validate required credentials before doing any work
+    missing = [
+        var for var, val in [
+            ("CONFLUENCE_URL", settings.CONFLUENCE_URL),
+            ("CONFLUENCE_USERNAME", settings.CONFLUENCE_USERNAME),
+            ("CONFLUENCE_API_TOKEN", settings.CONFLUENCE_API_TOKEN),
+            ("CONFLUENCE_SPACE_KEYS", settings.CONFLUENCE_SPACE_KEYS),
+        ]
+        if not val or val in ("https://your-org.atlassian.net", "you@org.com", "your-token-here")
+    ]
+    if missing:
+        logger.error(
+            "Missing or unconfigured Confluence credentials: %s. Set these in .env and retry.",
+            ", ".join(missing),
+        )
+        sys.exit(1)
     from teamrag.ingest.confluence import ConfluenceClient
     from teamrag.ingest.pipeline import chunk_document, embed_chunks, upsert_to_qdrant, write_to_postgres
 

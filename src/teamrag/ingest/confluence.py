@@ -45,7 +45,7 @@ class ConfluenceClient:
                         "spaceKey": space_key,
                         "type": "page",
                         "status": "current",
-                        "expand": "body.storage,version,metadata.labels",
+                        "expand": "body.storage,version,metadata.labels,space",
                         "limit": limit,
                         "start": start,
                     },

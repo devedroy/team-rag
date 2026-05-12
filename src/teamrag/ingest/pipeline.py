@@ -70,20 +70,27 @@ def _make_llama_doc(markdown: str, page_id: str):
 
 
 async def embed_chunks(chunks: list[dict], tei_url: str) -> list[list[float]]:
-    """Embed chunk contents via TEI /embed endpoint.
+    """Embed chunk contents via TEI /embed endpoint in batches of 32.
 
     Returns one embedding vector per chunk, in the same order.
     """
     import httpx
 
     texts = [c["content"] for c in chunks]
+    batch_size = 32
+    all_vectors: list[list[float]] = []
+
     async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            f"{tei_url.rstrip('/')}/embed",
-            json={"inputs": texts},
-        )
-        response.raise_for_status()
-        return response.json()
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            response = await client.post(
+                f"{tei_url.rstrip('/')}/embed",
+                json={"inputs": batch},
+            )
+            response.raise_for_status()
+            all_vectors.extend(response.json())
+
+    return all_vectors
 
 
 async def upsert_to_qdrant(

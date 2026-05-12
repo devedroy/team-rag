@@ -108,51 +108,48 @@ async def test_chunk_metadata_fields():
 
 @skip_if_no_confluence
 async def test_ingest_is_idempotent():
-    """Running ingest twice must not increase the Qdrant point count."""
+    """Running ingest twice on the same page must not increase the Qdrant point count."""
     from teamrag.config import settings
     from teamrag.ingest.confluence import ConfluenceClient
     from teamrag.ingest.pipeline import chunk_document, embed_chunks, upsert_to_qdrant
 
-    client = AsyncQdrantClient(url=settings.QDRANT_URL)
-    try:
-        await _ensure_collection(client, settings.QDRANT_COLLECTION)
-
-        info_before = await client.get_collection(settings.QDRANT_COLLECTION)
-        count_before = info_before.points_count or 0
+    async with AsyncQdrantClient(url=settings.QDRANT_URL) as qdrant:
+        await _ensure_collection(qdrant, settings.QDRANT_COLLECTION)
 
         confluence = ConfluenceClient(settings)
-        space_keys = [
-            k.strip() for k in settings.CONFLUENCE_SPACE_KEYS.split(",") if k.strip()
-        ]
+        space_keys = [k.strip() for k in settings.CONFLUENCE_SPACE_KEYS.split(",") if k.strip()]
         if not space_keys:
             pytest.skip("CONFLUENCE_SPACE_KEYS not set")
 
-        pages_done = 0
+        # Fetch the first page and ingest it once
+        first_page = None
+        first_chunks = []
         async for page in confluence.fetch_pages(space_keys[0]):
             chunks = chunk_document(page, settings.CONFLUENCE_URL)
             if not chunks:
                 continue
             vectors = await embed_chunks(chunks, settings.TEI_URL)
-            await upsert_to_qdrant(chunks, vectors, client, settings.QDRANT_COLLECTION)
-            pages_done += 1
-            if pages_done >= 1:
-                break
+            await upsert_to_qdrant(chunks, vectors, qdrant, settings.QDRANT_COLLECTION)
+            first_page = page
+            first_chunks = chunks
+            break
 
-        info_after = await client.get_collection(settings.QDRANT_COLLECTION)
-        count_after = info_after.points_count or 0
+        if first_page is None:
+            pytest.skip("No pages found in configured space")
 
-        assert count_after == count_before, (
-            f"Point count changed from {count_before} to {count_after} on second ingest run — "
-            "upsert is not idempotent"
+        # Record count after first ingest
+        info_after_first = await qdrant.get_collection(settings.QDRANT_COLLECTION)
+        count_after_first = info_after_first.points_count
+
+        # Ingest the SAME page again
+        vectors = await embed_chunks(first_chunks, settings.TEI_URL)
+        await upsert_to_qdrant(first_chunks, vectors, qdrant, settings.QDRANT_COLLECTION)
+
+        # Count must not change
+        info_after_second = await qdrant.get_collection(settings.QDRANT_COLLECTION)
+        count_after_second = info_after_second.points_count
+
+        assert count_after_second == count_after_first, (
+            f"Point count changed from {count_after_first} to {count_after_second} on second "
+            "ingest of the same page — upsert is not idempotent"
         )
-
-    except Exception as exc:
-        error_str = str(exc).lower()
-        if any(
-            keyword in error_str
-            for keyword in ("connection", "refused", "timeout", "unreachable", "network")
-        ):
-            pytest.skip(f"Qdrant not reachable at {settings.QDRANT_URL}: {exc}")
-        raise
-    finally:
-        await client.close()
