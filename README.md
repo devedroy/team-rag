@@ -57,6 +57,24 @@ docker compose down -v
 
 ---
 
+## MCP server (Phase 4)
+
+The MCP layer is a thin adapter over the FastAPI gateway: tools call `POST /query` and `POST /document` (same payloads as the HTTP API). Configure the gateway URL for the MCP process with **`TEAMRAG_GATEWAY_URL`** (default `http://localhost:8000`). Optional defaults: **`TEAMRAG_QUERY_TOP_K_DEFAULT`**, and for HTTP SSE **`MCP_SSE_HOST`** / **`MCP_SSE_PORT`** (`127.0.0.1`, `8765`).
+
+**stdio (local Cursor / Claude Code):** from the repository root, after `uv sync` and with the gateway running:
+
+```bash
+uv run python -m teamrag.mcp_server --transport stdio
+```
+
+Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio`). Example Cursor / Claude Desktop–style configs: [`examples/mcp/mcp.json`](examples/mcp/mcp.json), [`examples/mcp/claude_desktop_config.json`](examples/mcp/claude_desktop_config.json) — adjust `command`/`args` if you do not use `uv`.
+
+**HTTP SSE (team / remote):** start the MCP server with `--transport sse`, then connect your MCP client to the bound host and port (SSE path follows the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) defaults; set `MCP_SSE_HOST` / `MCP_SSE_PORT` as needed).
+
+**Merge / manual validation:** [`specs/2026-05-13-phase-4-mcp-server/validation.md`](specs/2026-05-13-phase-4-mcp-server/validation.md).
+
+---
+
 ## Table of Contents
 
 1. [Goals & Context](#goals--context)
