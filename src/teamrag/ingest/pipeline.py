@@ -8,6 +8,8 @@ import logging
 from markdownify import markdownify
 from llama_index.core.node_parser import MarkdownNodeParser
 
+from teamrag.acl import TIER_0_TAG
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +54,7 @@ def chunk_document(page: dict, confluence_base_url: str) -> list[dict]:
             "space_key": space_key,
             "last_updated": last_updated,
             "chunk_index": idx,
+            "acl_tags": [TIER_0_TAG],
         })
 
     logger.info("Page %s chunked into %d chunks", page_id, len(chunks))
@@ -106,6 +109,8 @@ async def upsert_to_qdrant(
     """
     from qdrant_client.models import PointStruct
 
+    from teamrag.acl import merge_acl_tags_for_ingest
+
     points = []
     for chunk, vector in zip(chunks, vectors):
         hex_id = chunk["chunk_id"]
@@ -116,6 +121,7 @@ async def upsert_to_qdrant(
             "page_title": chunk.get("page_title", ""),
             "last_updated": chunk.get("last_updated", ""),
             "chunk_index": chunk["chunk_index"],
+            "acl_tags": merge_acl_tags_for_ingest(chunk),
         }
         # Include optional source-specific fields when present
         for key in ("space_key", "page_id", "pr_number", "pr_title", "author", "merged_at", "repo"):
@@ -133,9 +139,11 @@ async def write_to_postgres(page: dict, chunks: list[dict], session, confluence_
     """Upsert one Source row and one Chunk row per chunk into Postgres."""
     from datetime import datetime
 
+    from sqlalchemy import delete
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    from teamrag.db.models import Source, Chunk as ChunkModel
+    from teamrag.acl import merge_acl_tags_for_ingest
+    from teamrag.db.models import AclTag, Source, Chunk as ChunkModel
 
     page_id = page["id"]
     page_title = page.get("title", "")
@@ -162,22 +170,34 @@ async def write_to_postgres(page: dict, chunks: list[dict], session, confluence_
     result = await session.execute(stmt)
     source_id = result.scalar_one()
 
-    # Upsert Chunk rows
+    # Upsert Chunk rows + ACL tags (tier-0 for public engineering-wide corpus)
     for chunk in chunks:
-        chunk_stmt = pg_insert(ChunkModel).values(
-            source_id=source_id,
-            content=chunk["content"],
-            chunk_index=chunk["chunk_index"],
-            chunk_metadata={
-                "space_key": chunk["space_key"],
-                "page_id": chunk["page_id"],
-                "last_updated": chunk["last_updated"],
-            },
-        ).on_conflict_do_update(
-            constraint="uq_chunks_source_chunk_index",
-            set_={"content": chunk["content"]},
+        chunk_stmt = (
+            pg_insert(ChunkModel)
+            .values(
+                source_id=source_id,
+                content=chunk["content"],
+                chunk_index=chunk["chunk_index"],
+                chunk_metadata={
+                    "space_key": chunk["space_key"],
+                    "page_id": chunk["page_id"],
+                    "last_updated": chunk["last_updated"],
+                },
+            )
+            .on_conflict_do_update(
+                constraint="uq_chunks_source_chunk_index",
+                set_={"content": chunk["content"]},
+            )
+            .returning(ChunkModel.id)
         )
-        await session.execute(chunk_stmt)
+        res = await session.execute(chunk_stmt)
+        chunk_uuid = res.scalar_one()
+        tags = merge_acl_tags_for_ingest(chunk)
+        await session.execute(delete(AclTag).where(AclTag.chunk_id == chunk_uuid))
+        for tag in tags:
+            await session.execute(
+                pg_insert(AclTag).values(chunk_id=chunk_uuid, tag=tag)
+            )
 
     await session.commit()
     logger.info("Wrote source + %d chunks to Postgres for page %s", len(chunks), page_id)

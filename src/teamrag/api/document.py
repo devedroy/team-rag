@@ -1,4 +1,7 @@
-"""Document endpoint — all chunks for a given source URL (Qdrant scroll)."""
+"""Document endpoint — chunks for a given source URL (Qdrant scroll).
+
+Unauthenticated callers only receive points tagged **tier-0** (same as ``POST /query``).
+"""
 
 from __future__ import annotations
 
@@ -7,8 +10,12 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchAny
 
+from teamrag.acl import (
+    log_acl_filter_mode,
+    qdrant_filter_scroll_by_source_url,
+    resolve_acl_filter_mode_from_request,
+)
 from teamrag.api.query import ChunkResult, QueryResponse
 
 logger = logging.getLogger(__name__)
@@ -55,14 +62,9 @@ async def document(request: DocumentRequest, http_request: Request) -> QueryResp
         qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
 
     variants = source_url_match_variants(request.source_url)
-    flt = Filter(
-        must=[
-            FieldCondition(
-                key="source_url",
-                match=MatchAny(any=variants),
-            )
-        ]
-    )
+    acl_mode = resolve_acl_filter_mode_from_request(http_request)
+    log_acl_filter_mode(acl_mode)
+    flt = qdrant_filter_scroll_by_source_url(variants, acl_mode)
 
     collected: list[tuple[int, ChunkResult]] = []
     offset = None

@@ -1,4 +1,9 @@
-"""MCP tool logic (testable without the MCP runtime)."""
+"""MCP tool logic (testable without the MCP runtime).
+
+``search_knowledge`` and ``get_document`` only call the FastAPI gateway
+(``TeamRagGateway``). Retrieval-time ACL matches ``POST /query`` /
+``POST /document`` — see ``teamrag.retrieval`` and ``teamrag.acl``.
+"""
 
 from __future__ import annotations
 
