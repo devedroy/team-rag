@@ -99,6 +99,8 @@ The tribal-knowledge unlock.
 
 **Done when:** "Why did we switch to Kafka?" returns a Slack thread chunk with a link to the original thread.
 
+> **Implementation note (this repo):** Phase 6 is delivered as **Microsoft Teams + Webex Messaging** ingestion (no Slack connector). Scope, metadata, and validation live under `specs/2026-05-13-phase-6-teams-webex-ingest/`; operator setup is in `docs/ingest-teams-webex.md`.
+
 ---
 
 ## Phase 7 — Squad-level ACLs (Tier-1)
