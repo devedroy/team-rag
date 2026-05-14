@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     CHAT_INGEST_MAX_CHANNEL_ROOTS: int = 200
     CHAT_INGEST_WEBEX_MAX_MESSAGES: int = 500
 
+    # LLM backend (proxied by /v1/chat/completions)
+    LLM_BASE_URL: str = ""            # e.g. "https://api.openai.com/v1" or Ollama base
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-4o-mini"
+
+    # RAG retrieval
+    RAG_TOP_K: int = 5
+
     # MCP server → FastAPI gateway (HTTP); stdio MCP still calls the gateway over HTTP
     TEAMRAG_GATEWAY_URL: str = "http://localhost:8000"
     TEAMRAG_QUERY_TOP_K_DEFAULT: int = 5

@@ -39,16 +39,19 @@ def merge_acl_tags_for_ingest(chunk: dict[str, Any]) -> list[str]:
 
 
 def qdrant_filter_for_mode(mode: AclFilterMode):
-    """Build a Qdrant ``Filter`` for the given ACL mode (lazy qdrant imports)."""
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
+    """Build a Qdrant ``Filter`` for the given ACL mode (lazy qdrant imports).
+
+    Missing ``acl_tags`` is treated as tier-0 for backward compatibility with
+    points ingested before Phase 5 (consistent with merge_acl_tags_for_ingest
+    defaulting to tier-0 when the field is absent).
+    """
+    from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
     if mode is AclFilterMode.UNAUTHENTICATED_TIER_0:
         return Filter(
-            must=[
-                FieldCondition(
-                    key="acl_tags",
-                    match=MatchValue(value=TIER_0_TAG),
-                ),
+            should=[
+                FieldCondition(key="acl_tags", match=MatchValue(value=TIER_0_TAG)),
+                IsEmptyCondition(is_empty=PayloadField(key="acl_tags")),
             ],
         )
     raise ValueError(f"Unsupported ACL filter mode: {mode!r}")
@@ -59,15 +62,13 @@ def qdrant_filter_scroll_by_source_url(source_url_variants: list[str], mode: Acl
     from qdrant_client.models import FieldCondition, Filter, MatchAny
 
     tier = qdrant_filter_for_mode(mode)
-    if not tier.must:
-        raise ValueError("ACL filter must not be empty")
     return Filter(
         must=[
             FieldCondition(
                 key="source_url",
                 match=MatchAny(any=source_url_variants),
             ),
-            *tier.must,
+            tier,
         ],
     )
 

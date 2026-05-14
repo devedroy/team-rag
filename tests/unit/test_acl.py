@@ -30,7 +30,7 @@ def test_merge_acl_tags_preserves_explicit_tags() -> None:
 
 def test_qdrant_filter_scroll_by_source_url_includes_acl() -> None:
     pytest.importorskip("qdrant_client")
-    from qdrant_client.models import Filter, MatchAny, MatchValue
+    from qdrant_client.models import Filter, MatchAny
 
     flt = qdrant_filter_scroll_by_source_url(
         ["https://a.example/x", "https://a.example/x/"],
@@ -38,22 +38,24 @@ def test_qdrant_filter_scroll_by_source_url_includes_acl() -> None:
     )
     assert isinstance(flt, Filter)
     assert flt.must is not None and len(flt.must) == 2
-    url_cond, acl_cond = flt.must[0], flt.must[1]
+    url_cond, nested_acl = flt.must[0], flt.must[1]
     assert isinstance(url_cond.match, MatchAny)
-    assert isinstance(acl_cond.match, MatchValue)
-    assert acl_cond.match.value == TIER_0_TAG
+    assert isinstance(nested_acl, Filter)
+    assert nested_acl.should is not None and len(nested_acl.should) == 2
 
 
 def test_qdrant_filter_unauthenticated_tier0() -> None:
     pytest.importorskip("qdrant_client")
-    from qdrant_client.models import Filter, MatchValue
+    from qdrant_client.models import Filter, IsEmptyCondition, MatchValue
 
     flt = qdrant_filter_for_mode(AclFilterMode.UNAUTHENTICATED_TIER_0)
     assert isinstance(flt, Filter)
-    assert flt.must is not None
-    assert len(flt.must) == 1
-    cond = flt.must[0]
-    assert cond.key == "acl_tags"
-    m = cond.match
-    assert isinstance(m, MatchValue)
-    assert m.value == TIER_0_TAG
+    assert flt.should is not None
+    assert len(flt.should) == 2
+    tier0_cond, missing_cond = flt.should[0], flt.should[1]
+    assert tier0_cond.key == "acl_tags"
+    assert isinstance(tier0_cond.match, MatchValue)
+    assert tier0_cond.match.value == TIER_0_TAG
+    assert isinstance(missing_cond, IsEmptyCondition)
+    assert missing_cond.is_empty.key == "acl_tags"
+    assert flt.min_should is None

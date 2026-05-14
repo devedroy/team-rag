@@ -287,7 +287,7 @@ async def write_chat_thread_to_postgres(
         )
         .on_conflict_do_update(
             constraint="uq_chunks_source_chunk_index",
-            set_={"content": chunk["content"], "chunk_metadata": chunk_metadata},
+            set_={"content": chunk["content"], "metadata": chunk_metadata},
         )
         .returning(ChunkModel.id)
     )

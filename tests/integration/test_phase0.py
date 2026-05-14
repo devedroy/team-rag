@@ -47,10 +47,10 @@ async def test_query_returns_chunks_or_empty():
 
 
 async def test_document_returns_chunks_or_empty():
-    from starlette.testclient import TestClient
-
-    with TestClient(app) as client:
-        response = client.post(
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
             "/document",
             json={"source_url": "https://example.com/not-indexed"},
         )
@@ -83,7 +83,7 @@ async def test_qdrant_collection_exists():
             if "not found" in error_str or "404" in error_str or "doesn't exist" in error_str:
                 await client.create_collection(
                     collection_name=settings.QDRANT_COLLECTION,
-                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                    vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
                 )
                 collection_info = await client.get_collection(settings.QDRANT_COLLECTION)
             else:
