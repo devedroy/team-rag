@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "teamrag": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "teamrag.mcp_server",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "TEAMRAG_GATEWAY_URL": "http://localhost:8000",
+        "TEAMRAG_QUERY_TOP_K_DEFAULT": "5"
+      }
+    }
+  }
+}

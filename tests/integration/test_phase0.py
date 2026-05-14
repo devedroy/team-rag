@@ -46,6 +46,20 @@ async def test_query_returns_chunks_or_empty():
     assert body["total"] == len(body["chunks"])
 
 
+async def test_document_returns_chunks_or_empty():
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/document",
+            json={"source_url": "https://example.com/not-indexed"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["chunks"], list)
+    assert body["total"] == len(body["chunks"])
+
+
 # ---------------------------------------------------------------------------
 # Qdrant test (requires live Qdrant — skips if unreachable)
 # ---------------------------------------------------------------------------

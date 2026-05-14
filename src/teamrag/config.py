@@ -26,6 +26,24 @@ class Settings(BaseSettings):
     GITHUB_REPOS: str = ""            # comma-separated, e.g. "org/repo1,org/repo2"
     GITHUB_MAX_PRS: int = 200
 
+    # Microsoft Teams (Graph) — Phase 6 chat ingest
+    TEAMS_TENANT_ID: str = ""
+    TEAMS_CLIENT_ID: str = ""
+    TEAMS_CLIENT_SECRET: str = ""
+    TEAMS_BOT_USER_ID: str = ""
+
+    # Webex Messaging — Phase 6 chat ingest
+    WEBEX_BOT_TOKEN: str = ""
+    WEBEX_ORG_ID: str = ""
+    WEBEX_WEB_CLIENT_BASE: str = "https://app.webex.com"
+
+    # Shared chat ingest tuning (Teams + Webex)
+    CHAT_INGEST_POLL_INTERVAL_SECONDS: int = 300
+    CHAT_INGEST_MIN_PARTICIPANTS: int = 5
+    CHAT_INGEST_SKIP_NO_REPLIES: bool = True
+    CHAT_INGEST_MAX_CHANNEL_ROOTS: int = 200
+    CHAT_INGEST_WEBEX_MAX_MESSAGES: int = 500
+
     # LLM backend (proxied by /v1/chat/completions)
     LLM_BASE_URL: str = ""            # e.g. "https://api.openai.com/v1" or Ollama base
     LLM_API_KEY: str = ""
@@ -33,6 +51,14 @@ class Settings(BaseSettings):
 
     # RAG retrieval
     RAG_TOP_K: int = 5
+
+    # MCP server → FastAPI gateway (HTTP); stdio MCP still calls the gateway over HTTP
+    TEAMRAG_GATEWAY_URL: str = "http://localhost:8000"
+    TEAMRAG_QUERY_TOP_K_DEFAULT: int = 5
+
+    # MCP HTTP SSE transport (see `teamrag-mcp --transport sse`)
+    MCP_SSE_HOST: str = "127.0.0.1"
+    MCP_SSE_PORT: int = 8765
 
 
 settings = Settings()

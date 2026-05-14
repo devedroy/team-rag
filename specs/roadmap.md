@@ -99,6 +99,8 @@ The tribal-knowledge unlock.
 
 **Done when:** "Why did we switch to Kafka?" returns a Slack thread chunk with a link to the original thread.
 
+> **Implementation note (this repo):** Phase 6 is delivered as **Microsoft Teams + Webex Messaging** ingestion (no Slack connector). Scope, metadata, and validation live under `specs/2026-05-13-phase-6-teams-webex-ingest/`; operator setup is in `docs/ingest-teams-webex.md`.
+
 ---
 
 ## Phase 7 — Squad-level ACLs (Tier-1)
@@ -107,7 +109,7 @@ Gate private content to squad members.
 
 - Keycloak (or Okta/Google Workspace) group sync
 - Nightly job: refresh `channel_id → user_ids` and `repo → squad` mappings in Postgres
-- Private Slack channels, squad repos tagged `acl_tags: ["squad-payments", "tier-1"]`
+- Private Teams/Webex channels, squad repos tagged `acl_tags: ["squad-payments", "tier-1"]`
 - Per-user group lookup injected into every query filter
 
 **Done when:** A user in squad-payments sees private payments channel results; a user outside does not.

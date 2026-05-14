@@ -8,7 +8,42 @@ import logging
 from markdownify import markdownify
 from llama_index.core.node_parser import MarkdownNodeParser
 
+from teamrag.acl import TIER_0_TAG
+
 logger = logging.getLogger(__name__)
+
+# Optional keys copied from ingest chunk dicts into Qdrant payload (never silently drop).
+OPTIONAL_QDRANT_PAYLOAD_KEYS: tuple[str, ...] = (
+    "space_key",
+    "page_id",
+    "pr_number",
+    "pr_title",
+    "author",
+    "merged_at",
+    "repo",
+    # Phase 6 chat (Teams / Webex)
+    "source",
+    "tenant_id",
+    "org_id",
+    "channel_id",
+    "space_id",
+    "channel_name",
+    "space_title",
+    "thread_id",
+    "participants",
+    "reply_count",
+    "reaction_count",
+    "has_code_block",
+    "last_activity_at",
+)
+
+
+def _qdrant_payload_extras(chunk: dict) -> dict:
+    out: dict = {}
+    for key in OPTIONAL_QDRANT_PAYLOAD_KEYS:
+        if key in chunk and chunk[key] is not None:
+            out[key] = chunk[key]
+    return out
 
 
 def html_to_markdown(html: str) -> str:
@@ -52,6 +87,7 @@ def chunk_document(page: dict, confluence_base_url: str) -> list[dict]:
             "space_key": space_key,
             "last_updated": last_updated,
             "chunk_index": idx,
+            "acl_tags": [TIER_0_TAG],
         })
 
     logger.info("Page %s chunked into %d chunks", page_id, len(chunks))
@@ -101,10 +137,13 @@ async def upsert_to_qdrant(
 ) -> None:
     """Upsert chunk vectors into Qdrant — idempotent (existing IDs are overwritten).
 
-    Handles both Confluence chunks (with 'url', 'page_title') and GitHub chunks
-    (with 'source_url', 'pr_title') by checking both field names.
+    Chunk dicts may originate from Confluence (``url``, ``page_title``), GitHub
+    (``source_url``, ``pr_title``), or Phase 6 chat threads (``source``,
+    ``thread_id``, Teams/Webex metadata keys — see ``OPTIONAL_QDRANT_PAYLOAD_KEYS``).
     """
     from qdrant_client.models import PointStruct
+
+    from teamrag.acl import merge_acl_tags_for_ingest
 
     points = []
     for chunk, vector in zip(chunks, vectors):
@@ -116,11 +155,9 @@ async def upsert_to_qdrant(
             "page_title": chunk.get("page_title", ""),
             "last_updated": chunk.get("last_updated", ""),
             "chunk_index": chunk["chunk_index"],
+            "acl_tags": merge_acl_tags_for_ingest(chunk),
         }
-        # Include optional source-specific fields when present
-        for key in ("space_key", "page_id", "pr_number", "pr_title", "author", "merged_at", "repo"):
-            if key in chunk:
-                payload[key] = chunk[key]
+        payload.update(_qdrant_payload_extras(chunk))
         points.append(
             PointStruct(id=point_id, vector=vector, payload=payload)
         )
@@ -133,9 +170,11 @@ async def write_to_postgres(page: dict, chunks: list[dict], session, confluence_
     """Upsert one Source row and one Chunk row per chunk into Postgres."""
     from datetime import datetime
 
+    from sqlalchemy import delete
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    from teamrag.db.models import Source, Chunk as ChunkModel
+    from teamrag.acl import merge_acl_tags_for_ingest
+    from teamrag.db.models import AclTag, Source, Chunk as ChunkModel
 
     page_id = page["id"]
     page_title = page.get("title", "")
@@ -162,22 +201,102 @@ async def write_to_postgres(page: dict, chunks: list[dict], session, confluence_
     result = await session.execute(stmt)
     source_id = result.scalar_one()
 
-    # Upsert Chunk rows
+    # Upsert Chunk rows + ACL tags (tier-0 for public engineering-wide corpus)
     for chunk in chunks:
-        chunk_stmt = pg_insert(ChunkModel).values(
-            source_id=source_id,
-            content=chunk["content"],
-            chunk_index=chunk["chunk_index"],
-            chunk_metadata={
-                "space_key": chunk["space_key"],
-                "page_id": chunk["page_id"],
-                "last_updated": chunk["last_updated"],
-            },
-        ).on_conflict_do_update(
-            constraint="uq_chunks_source_chunk_index",
-            set_={"content": chunk["content"]},
+        chunk_stmt = (
+            pg_insert(ChunkModel)
+            .values(
+                source_id=source_id,
+                content=chunk["content"],
+                chunk_index=chunk["chunk_index"],
+                chunk_metadata={
+                    "space_key": chunk["space_key"],
+                    "page_id": chunk["page_id"],
+                    "last_updated": chunk["last_updated"],
+                },
+            )
+            .on_conflict_do_update(
+                constraint="uq_chunks_source_chunk_index",
+                set_={"content": chunk["content"]},
+            )
+            .returning(ChunkModel.id)
         )
-        await session.execute(chunk_stmt)
+        res = await session.execute(chunk_stmt)
+        chunk_uuid = res.scalar_one()
+        tags = merge_acl_tags_for_ingest(chunk)
+        await session.execute(delete(AclTag).where(AclTag.chunk_id == chunk_uuid))
+        for tag in tags:
+            await session.execute(
+                pg_insert(AclTag).values(chunk_id=chunk_uuid, tag=tag)
+            )
 
     await session.commit()
     logger.info("Wrote source + %d chunks to Postgres for page %s", len(chunks), page_id)
+
+
+async def write_chat_thread_to_postgres(
+    *,
+    source_type: str,
+    chunk: dict,
+    chunk_metadata: dict,
+    session,
+) -> None:
+    """Upsert one Source (thread URL) and one Chunk (index 0) for a chat thread."""
+    from datetime import datetime
+
+    from sqlalchemy import delete
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from teamrag.acl import merge_acl_tags_for_ingest
+    from teamrag.db.models import AclTag, Chunk as ChunkModel, Source
+
+    source_url = chunk["source_url"]
+    page_title = chunk.get("page_title", "")
+    last_updated_str = chunk.get("last_updated") or chunk.get("last_activity_at")
+    last_updated: datetime | None = None
+    if last_updated_str:
+        try:
+            last_updated = datetime.fromisoformat(str(last_updated_str).replace("Z", "+00:00"))
+        except ValueError:
+            last_updated = None
+
+    stmt = (
+        pg_insert(Source)
+        .values(
+            source_type=source_type,
+            source_url=source_url,
+            page_title=page_title,
+            last_updated=last_updated,
+        )
+        .on_conflict_do_update(
+            index_elements=["source_url"],
+            set_={"page_title": page_title, "last_updated": last_updated},
+        )
+        .returning(Source.id)
+    )
+    result = await session.execute(stmt)
+    source_id = result.scalar_one()
+
+    chunk_stmt = (
+        pg_insert(ChunkModel)
+        .values(
+            source_id=source_id,
+            content=chunk["content"],
+            chunk_index=0,
+            chunk_metadata=chunk_metadata,
+        )
+        .on_conflict_do_update(
+            constraint="uq_chunks_source_chunk_index",
+            set_={"content": chunk["content"], "metadata": chunk_metadata},
+        )
+        .returning(ChunkModel.id)
+    )
+    res = await session.execute(chunk_stmt)
+    chunk_uuid = res.scalar_one()
+    tags = merge_acl_tags_for_ingest(chunk)
+    await session.execute(delete(AclTag).where(AclTag.chunk_id == chunk_uuid))
+    for tag in tags:
+        await session.execute(pg_insert(AclTag).values(chunk_id=chunk_uuid, tag=tag))
+
+    await session.commit()
+    logger.info("Wrote chat thread source + chunk to Postgres: %s", source_url)

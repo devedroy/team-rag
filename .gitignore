@@ -17,6 +17,9 @@ venv/
 # IDE
 .idea/
 
+# Playwright MCP artifacts
+.playwright-mcp/
+
 # Documentation and specs (WIP)
 docs/
 specs/

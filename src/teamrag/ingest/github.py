@@ -181,6 +181,8 @@ def chunk_pr_document(pr: dict, document: str) -> list[dict]:
     from llama_index.core import Document
     from llama_index.core.node_parser import SentenceSplitter
 
+    from teamrag.acl import TIER_0_TAG
+
     repo = pr["base"]["repo"]["full_name"]
     pr_number = pr["number"]
     pr_title = pr.get("title", "")
@@ -213,6 +215,7 @@ def chunk_pr_document(pr: dict, document: str) -> list[dict]:
             "last_updated": merged_at,
             "space_key": repo,
             "page_id": f"{repo}:{pr_number}",
+            "acl_tags": [TIER_0_TAG],
         })
 
     logger.info("PR #%d chunked into %d chunks", pr_number, len(chunks))
@@ -223,10 +226,11 @@ async def write_github_to_postgres(pr: dict, chunks: list[dict], session) -> Non
     """Upsert one Source row and one Chunk row per chunk into Postgres."""
     from datetime import datetime
 
+    from sqlalchemy import delete
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    from teamrag.db.models import Chunk as ChunkModel
-    from teamrag.db.models import Source
+    from teamrag.acl import merge_acl_tags_for_ingest
+    from teamrag.db.models import AclTag, Chunk as ChunkModel, Source
 
     repo = pr["base"]["repo"]["full_name"]
     pr_number = pr["number"]
@@ -276,8 +280,16 @@ async def write_github_to_postgres(pr: dict, chunks: list[dict], session) -> Non
                 constraint="uq_chunks_source_chunk_index",
                 set_={"content": chunk["content"]},
             )
+            .returning(ChunkModel.id)
         )
-        await session.execute(chunk_stmt)
+        res = await session.execute(chunk_stmt)
+        chunk_uuid = res.scalar_one()
+        tags = merge_acl_tags_for_ingest(chunk)
+        await session.execute(delete(AclTag).where(AclTag.chunk_id == chunk_uuid))
+        for tag in tags:
+            await session.execute(
+                pg_insert(AclTag).values(chunk_id=chunk_uuid, tag=tag)
+            )
 
     await session.commit()
     logger.info("Wrote source + %d chunks to Postgres for PR %s#%d", len(chunks), repo, pr_number)
