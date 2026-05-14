@@ -1,4 +1,4 @@
-"""Query endpoint — real vector search via TEI + Qdrant."""
+"""Query endpoint — real vector search via TEI + Qdrant with ACL filtering."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
-from teamrag.services.retrieval import ChunkResult, retrieve_chunks
+from teamrag.retrieval import semantic_search
+from teamrag.services.retrieval import ChunkResult
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,15 +35,29 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
 
     qdrant_client = getattr(http_request.app.state, "qdrant_client", None)
     if qdrant_client is None:
-        # If not available in app.state (e.g., during testing), create a temporary client
         qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
 
-    chunks = await retrieve_chunks(
-        query=request.query,
-        qdrant_client=qdrant_client,
-        collection=settings.QDRANT_COLLECTION,
-        tei_url=settings.TEI_URL,
-        top_k=request.top_k,
-    )
+    try:
+        hits = await semantic_search(
+            query=request.query,
+            top_k=request.top_k,
+            tei_url=settings.TEI_URL,
+            qdrant_client=qdrant_client,
+            collection_name=settings.QDRANT_COLLECTION,
+            request=http_request,
+        )
+    except Exception as exc:
+        logger.warning("Retrieval failed: %s — returning empty results", exc)
+        return QueryResponse(chunks=[], total=0)
+
+    chunks = [
+        ChunkResult(
+            content=h.content,
+            source_url=h.source_url,
+            page_title=h.page_title,
+            score=float(h.score) if h.score is not None else 0.0,
+        )
+        for h in hits
+    ]
 
     return QueryResponse(chunks=chunks, total=len(chunks))

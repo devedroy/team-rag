@@ -2,12 +2,15 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-from starlette.testclient import TestClient
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from teamrag.main import app
 
+pytestmark = pytest.mark.asyncio
 
-def test_document_returns_chunks_sorted_by_chunk_index():
+
+async def test_document_returns_chunks_sorted_by_chunk_index():
     mock_client = MagicMock()
     mock_client.scroll = AsyncMock(
         return_value=(
@@ -35,9 +38,11 @@ def test_document_returns_chunks_sorted_by_chunk_index():
 
     prev = getattr(app.state, "qdrant_client", None)
     try:
-        with TestClient(app) as client:
-            app.state.qdrant_client = mock_client
-            response = client.post(
+        app.state.qdrant_client = mock_client
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
                 "/document",
                 json={"source_url": "https://example.com/page"},
             )
@@ -50,8 +55,17 @@ def test_document_returns_chunks_sorted_by_chunk_index():
     assert [c["content"] for c in body["chunks"]] == ["first", "second"]
     assert all(c["score"] == 0.0 for c in body["chunks"])
 
+    assert mock_client.scroll.called
+    _args, scroll_kw = mock_client.scroll.call_args
+    scroll_filter = scroll_kw.get("scroll_filter")
+    assert scroll_filter is not None
+    assert scroll_filter.must is not None
+    assert len(scroll_filter.must) == 2
 
-def test_document_rejects_whitespace_only_url():
-    with TestClient(app) as client:
-        response = client.post("/document", json={"source_url": "   "})
+
+async def test_document_rejects_whitespace_only_url():
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post("/document", json={"source_url": "   "})
     assert response.status_code == 422

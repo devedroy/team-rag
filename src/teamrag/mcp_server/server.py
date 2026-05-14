@@ -11,8 +11,10 @@ from teamrag.mcp_server.handlers import get_document_handler, search_knowledge_h
 mcp = FastMCP(
     "teamrag",
     instructions=(
-        "TeamRag retrieval over the team's indexed docs and PRs. "
-        "Use search_knowledge for semantic search; use get_document to load every chunk "
+        "TeamRag retrieval over the team's indexed docs and PRs (via the FastAPI gateway). "
+        "Unauthenticated access is limited to **tier-0** public/engineering-wide chunks "
+        "— the same rules as POST /query and POST /document. "
+        "Use search_knowledge for semantic search; use get_document to load chunks "
         "for one source URL (e.g. a Confluence page or GitHub PR)."
     ),
 )
@@ -22,13 +24,13 @@ _gateway = TeamRagGateway()
 
 @mcp.tool()
 async def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
-    """Semantic search across all indexed team content. Returns ranked text chunks with citations."""
+    """Semantic search across indexed team content (gateway POST /query; tier-0 ACL for unauthenticated callers)."""
     return await search_knowledge_handler(query, top_k, _gateway)
 
 
 @mcp.tool()
 async def get_document(source_url: str) -> list[dict]:
-    """Fetch all indexed chunks for a single source URL (full document / PR context)."""
+    """Load chunks for one source URL (gateway POST /document; same tier-0 ACL as search)."""
     return await get_document_handler(source_url, _gateway)
 
 

@@ -103,6 +103,7 @@ def test_chunk_pr_document_content_nonempty():
 
 def test_chunk_has_url_and_page_title_compat_fields():
     """GitHub chunks must carry url + page_title so upsert_to_qdrant works unchanged."""
+    from teamrag.acl import TIER_0_TAG
     from teamrag.ingest.github import assemble_pr_document, chunk_pr_document
     doc = assemble_pr_document(SAMPLE_PR, SAMPLE_REVIEWS, SAMPLE_INLINE, SAMPLE_ISSUE_BODIES)
     chunks = chunk_pr_document(SAMPLE_PR, doc)
@@ -111,3 +112,4 @@ def test_chunk_has_url_and_page_title_compat_fields():
         assert "page_title" in chunk, "chunk must have 'page_title' for upsert_to_qdrant"
         assert chunk["url"] == chunk["source_url"]
         assert chunk["page_title"] == chunk["pr_title"]
+        assert chunk.get("acl_tags") == [TIER_0_TAG]
