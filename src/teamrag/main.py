@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 from fastapi import FastAPI
 from qdrant_client import AsyncQdrantClient
 
+from teamrag.api.chat import router as chat_router
 from teamrag.api.health import router as health_router
 from teamrag.api.query import router as query_router
 from teamrag.config import settings
@@ -50,3 +51,4 @@ app = FastAPI(
 
 app.include_router(health_router, prefix="")
 app.include_router(query_router, prefix="")
+app.include_router(chat_router, prefix="/v1")

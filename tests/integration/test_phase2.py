@@ -66,7 +66,7 @@ async def _run_github_ingest(settings) -> None:
         except Exception:
             await qdrant.create_collection(
                 collection_name=settings.QDRANT_COLLECTION,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
             )
 
         repos = [r.strip() for r in settings.GITHUB_REPOS.split(",") if r.strip()]

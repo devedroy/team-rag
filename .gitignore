@@ -13,3 +13,10 @@ dist/
 # Virtual environments
 .venv/
 venv/
+
+# IDE
+.idea/
+
+# Documentation and specs (WIP)
+docs/
+specs/

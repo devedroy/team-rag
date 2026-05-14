@@ -1,0 +1,83 @@
+- generic [ref=e5]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - button "Open Sidebar New Chat Search Notes Workspace" [ref=e9]:
+        - button "Open Sidebar" [ref=e12]
+        - generic [ref=e14]:
+          - link "New Chat" [ref=e17] [cursor=pointer]:
+            - /url: /
+            - img [ref=e19]
+          - button "Search" [ref=e23] [cursor=pointer]:
+            - img [ref=e25]
+          - link "Notes" [ref=e29] [cursor=pointer]:
+            - /url: /notes
+            - img [ref=e31]
+          - link "Workspace" [ref=e35] [cursor=pointer]:
+            - /url: /workspace
+            - img [ref=e37]
+      - img "Open User Profile Menu" [ref=e45] [cursor=pointer]
+    - generic [ref=e52]:
+      - navigation [ref=e53]:
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - generic [ref=e59]:
+              - 'button "Selected model: minimax-m2.5-free" [ref=e63] [cursor=pointer]':
+                - generic [ref=e64]:
+                  - text: minimax-m2.5-free
+                  - img [ref=e65]
+              - button "Add Model" [ref=e69] [cursor=pointer]:
+                - img [ref=e70]
+            - button "Set as default" [ref=e73] [cursor=pointer]
+          - generic [ref=e74]:
+            - button [ref=e76] [cursor=pointer]:
+              - img [ref=e78]
+            - button "Controls" [ref=e81] [cursor=pointer]:
+              - img [ref=e83]
+            - generic [ref=e88] [cursor=pointer]: User menu
+      - generic [ref=e91]:
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - button [ref=e98] [cursor=pointer]:
+              - img [ref=e99]
+            - generic [ref=e102]: minimax-m2.5-free
+          - generic [ref=e109]:
+            - paragraph [ref=e114]: How can I help you today?
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - img [ref=e120] [cursor=pointer]
+                - img [ref=e126] [cursor=pointer]
+              - generic [ref=e131]:
+                - button "Voice Input" [ref=e133] [cursor=pointer]:
+                  - img [ref=e134]
+                - button "Voice mode" [ref=e139] [cursor=pointer]:
+                  - img [ref=e140]
+        - generic [ref=e142]:
+          - generic [ref=e143]:
+            - img [ref=e144]
+            - text: Suggested
+          - list [ref=e147]:
+            - listitem [ref=e148] [cursor=pointer]:
+              - generic [ref=e149]:
+                - generic [ref=e150]: Tell me a fun fact
+                - generic [ref=e151]: about the Roman Empire
+            - listitem [ref=e152] [cursor=pointer]:
+              - generic [ref=e153]:
+                - generic [ref=e154]: Give me ideas
+                - generic [ref=e155]: for what to do with my kids' art
+            - listitem [ref=e156] [cursor=pointer]:
+              - generic [ref=e157]:
+                - generic [ref=e158]: Help me study
+                - generic [ref=e159]: vocabulary for a college entrance exam
+            - listitem [ref=e160] [cursor=pointer]:
+              - generic [ref=e161]:
+                - generic [ref=e162]: Overcome procrastination
+                - generic [ref=e163]: give me tips
+            - listitem [ref=e164] [cursor=pointer]:
+              - generic [ref=e165]:
+                - generic [ref=e166]: Show me a code snippet
+                - generic [ref=e167]: of a website's sticky header
+            - listitem [ref=e168] [cursor=pointer]:
+              - generic [ref=e169]:
+                - generic [ref=e170]: Explain options trading
+                - generic [ref=e171]: if I'm familiar with buying and selling stocks
+  - generic [ref=e172]: Open WebUI

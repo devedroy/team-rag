@@ -26,5 +26,13 @@ class Settings(BaseSettings):
     GITHUB_REPOS: str = ""            # comma-separated, e.g. "org/repo1,org/repo2"
     GITHUB_MAX_PRS: int = 200
 
+    # LLM backend (proxied by /v1/chat/completions)
+    LLM_BASE_URL: str = ""            # e.g. "https://api.openai.com/v1" or Ollama base
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-4o-mini"
+
+    # RAG retrieval
+    RAG_TOP_K: int = 5
+
 
 settings = Settings()
