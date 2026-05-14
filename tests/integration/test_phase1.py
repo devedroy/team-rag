@@ -34,7 +34,7 @@ async def _ensure_collection(client: AsyncQdrantClient, name: str) -> None:
     except Exception:
         await client.create_collection(
             collection_name=name,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
         )
 
 

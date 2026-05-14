@@ -69,7 +69,7 @@ async def test_qdrant_collection_exists():
             if "not found" in error_str or "404" in error_str or "doesn't exist" in error_str:
                 await client.create_collection(
                     collection_name=settings.QDRANT_COLLECTION,
-                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                    vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
                 )
                 collection_info = await client.get_collection(settings.QDRANT_COLLECTION)
             else:

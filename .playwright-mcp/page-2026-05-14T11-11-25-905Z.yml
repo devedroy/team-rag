@@ -1,0 +1,53 @@
+- generic [ref=e5]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - button "Open Sidebar New Chat Search Notes Workspace" [ref=e9]:
+        - button "Open Sidebar" [ref=e12]
+        - generic [ref=e14]:
+          - link "New Chat" [ref=e17] [cursor=pointer]:
+            - /url: /
+            - img [ref=e19]
+          - button "Search" [ref=e23] [cursor=pointer]:
+            - img [ref=e25]
+          - link "Notes" [ref=e29] [cursor=pointer]:
+            - /url: /notes
+            - img [ref=e31]
+          - link "Workspace" [ref=e35] [cursor=pointer]:
+            - /url: /workspace
+            - img [ref=e37]
+      - img "Open User Profile Menu" [ref=e45] [cursor=pointer]
+    - generic [ref=e52]:
+      - navigation [ref=e53]:
+        - generic [ref=e56]:
+          - generic [ref=e59]:
+            - 'button "Selected model: minimax-m2.5-free" [ref=e63] [cursor=pointer]':
+              - generic [ref=e64]:
+                - text: minimax-m2.5-free
+                - img [ref=e65]
+            - button "Add Model" [ref=e69] [cursor=pointer]:
+              - img [ref=e70]
+          - generic [ref=e74]:
+            - button [ref=e187] [cursor=pointer]:
+              - img [ref=e189]
+            - button "Controls" [ref=e81] [cursor=pointer]:
+              - img [ref=e83]
+            - generic [ref=e88] [cursor=pointer]: User menu
+      - generic [ref=e89]:
+        - region "Chat Conversation" [ref=e195]:
+          - heading "Chat Conversation" [level=2] [ref=e196]
+          - log [ref=e197]:
+            - listitem [ref=e198]:
+              - paragraph [ref=e206]: What is RAG?
+            - listitem [ref=e210]:
+              - generic [ref=e211]:
+                - img [ref=e213]
+                - generic [ref=e217]: minimax-m2.5-free
+        - generic [ref=e232]:
+          - paragraph [ref=e237]: Send a Message
+          - generic [ref=e238]:
+            - generic [ref=e239]:
+              - img [ref=e243] [cursor=pointer]
+              - img [ref=e249] [cursor=pointer]
+            - button [ref=e257] [cursor=pointer]:
+              - img [ref=e258]
+  - generic [ref=e172]: Open WebUI

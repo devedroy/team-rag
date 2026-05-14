@@ -98,6 +98,20 @@ async def test_chat_completions_includes_source_url():
     except Exception as exc:
         pytest.skip(f"TEI embedding service not reachable — cannot exercise retrieval path: {exc}")
 
+    # LLM backend must be reachable; skip if endpoint returns an error
+    try:
+        async with AsyncClient() as http:
+            probe = await http.post(
+                f"{settings.LLM_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {settings.LLM_API_KEY}"},
+                json={"model": settings.LLM_MODEL, "messages": [{"role": "user", "content": "ping"}]},
+                timeout=10.0,
+            )
+        if probe.status_code >= 400:
+            pytest.skip(f"LLM backend not available (HTTP {probe.status_code}) — skipping end-to-end LLM test")
+    except Exception as exc:
+        pytest.skip(f"LLM backend not reachable — skipping end-to-end LLM test: {exc}")
+
     # Create Qdrant client and ensure collection exists
     qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
     test_chunk_id = None
@@ -108,7 +122,7 @@ async def test_chat_completions_includes_source_url():
             # Collection doesn't exist; create it
             await qdrant_client.create_collection(
                 collection_name=settings.QDRANT_COLLECTION,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
             )
 
         # Insert a test chunk with a source URL
@@ -118,7 +132,7 @@ async def test_chat_completions_includes_source_url():
             points=[
                 {
                     "id": test_chunk_id,
-                    "vector": [0.1] * 768,  # Dummy 768-dim vector
+                    "vector": [0.1] * 1024,  # Dummy 1024-dim vector (BGE-M3)
                     "payload": {
                         "content": "This is a test chunk about Python programming.",
                         "source_url": "https://example.com/python-guide",
