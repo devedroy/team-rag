@@ -167,6 +167,36 @@ def _empty_non_streaming_response(content: str) -> dict[str, Any]:
     }
 
 
+@router.get("/models")
+async def list_models():
+    """Return available models in OpenAI-compatible format."""
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": settings.LLM_MODEL,
+                "object": "model",
+                "owned_by": "openai",
+                "permission": [
+                    {
+                        "id": "modelperm-1",
+                        "object": "model_permission",
+                        "created": int(time.time()),
+                        "allow_create_engine": False,
+                        "allow_logprobs": False,
+                        "allow_sampling": True,
+                        "allow_search_indices": False,
+                        "allow_view": True,
+                        "organization": "*",
+                        "group_id": None,
+                        "is_blocking": False,
+                    }
+                ],
+            }
+        ],
+    }
+
+
 @router.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest, http_request: Request):
     if not settings.LLM_BASE_URL:
