@@ -47,10 +47,10 @@ async def test_query_returns_chunks_or_empty():
 
 
 async def test_document_returns_chunks_or_empty():
-    from starlette.testclient import TestClient
-
-    with TestClient(app) as client:
-        response = client.post(
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
             "/document",
             json={"source_url": "https://example.com/not-indexed"},
         )
