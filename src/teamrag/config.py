@@ -34,5 +34,13 @@ class Settings(BaseSettings):
     # RAG retrieval
     RAG_TOP_K: int = 5
 
+    # MCP server → FastAPI gateway (HTTP); stdio MCP still calls the gateway over HTTP
+    TEAMRAG_GATEWAY_URL: str = "http://localhost:8000"
+    TEAMRAG_QUERY_TOP_K_DEFAULT: int = 5
+
+    # MCP HTTP SSE transport (see `teamrag-mcp --transport sse`)
+    MCP_SSE_HOST: str = "127.0.0.1"
+    MCP_SSE_PORT: int = 8765
+
 
 settings = Settings()

@@ -22,12 +22,16 @@ dependencies = [
     "markdownify>=0.12.0",
     "llama-index-core>=0.10.0",
     "tenacity>=8.2.0",
+    "mcp>=1.8.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
 ]
+
+[project.scripts]
+teamrag-mcp = "teamrag.mcp_server.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
