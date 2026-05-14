@@ -1,4 +1,4 @@
-"""CLI entry point: python -m teamrag.ingest <confluence|github>"""
+"""CLI entry point: python -m teamrag.ingest <confluence|github|teams|webex|chat> [--poll]"""
 
 from __future__ import annotations
 
@@ -10,9 +10,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 
+async def _ensure_qdrant_collection(qdrant, settings) -> None:
+    from qdrant_client.models import Distance, VectorParams
+
+    try:
+        await qdrant.get_collection(settings.QDRANT_COLLECTION)
+    except Exception:
+        logger.info("Creating Qdrant collection '%s'", settings.QDRANT_COLLECTION)
+        await qdrant.create_collection(
+            collection_name=settings.QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+        )
+
+
 async def _run_confluence() -> None:
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import Distance, VectorParams
 
     from teamrag.config import settings
     from teamrag.db.session import get_session
@@ -39,14 +51,7 @@ async def _run_confluence() -> None:
 
     qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
     try:
-        try:
-            await qdrant.get_collection(settings.QDRANT_COLLECTION)
-        except Exception:
-            logger.info("Creating Qdrant collection '%s'", settings.QDRANT_COLLECTION)
-            await qdrant.create_collection(
-                collection_name=settings.QDRANT_COLLECTION,
-                vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-            )
+        await _ensure_qdrant_collection(qdrant, settings)
 
         pages_processed = 0
         chunks_total = 0
@@ -80,7 +85,6 @@ async def _run_confluence() -> None:
 
 async def _run_github() -> None:
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import Distance, VectorParams
 
     from teamrag.config import settings
     from teamrag.db.session import get_session
@@ -109,14 +113,7 @@ async def _run_github() -> None:
 
     qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
     try:
-        try:
-            await qdrant.get_collection(settings.QDRANT_COLLECTION)
-        except Exception:
-            logger.info("Creating Qdrant collection '%s'", settings.QDRANT_COLLECTION)
-            await qdrant.create_collection(
-                collection_name=settings.QDRANT_COLLECTION,
-                vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-            )
+        await _ensure_qdrant_collection(qdrant, settings)
 
         repos = [r.strip() for r in settings.GITHUB_REPOS.split(",") if r.strip()]
         repos_processed = 0
@@ -169,19 +166,131 @@ async def _run_github() -> None:
         await qdrant.close()
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python -m teamrag.ingest <source>")
-        print("  Sources: confluence, github")
+async def _run_teams_once() -> None:
+    from qdrant_client import AsyncQdrantClient
+
+    from teamrag.config import settings
+    from teamrag.db.session import get_session
+    from teamrag.ingest.teams import TeamsGraphClient, ingest_teams_channels
+
+    missing = [
+        var
+        for var, val in [
+            ("TEAMS_TENANT_ID", settings.TEAMS_TENANT_ID),
+            ("TEAMS_CLIENT_ID", settings.TEAMS_CLIENT_ID),
+            ("TEAMS_CLIENT_SECRET", settings.TEAMS_CLIENT_SECRET),
+            ("TEAMS_BOT_USER_ID", settings.TEAMS_BOT_USER_ID),
+        ]
+        if not val
+    ]
+    if missing:
+        logger.error(
+            "Missing Teams Graph configuration: %s. Set in .env — see docs/ingest-teams-webex.md.",
+            ", ".join(missing),
+        )
         sys.exit(1)
 
-    source = sys.argv[1].lower()
+    qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+    try:
+        await _ensure_qdrant_collection(qdrant, settings)
+        async for session in get_session():
+            async with TeamsGraphClient(settings) as graph:
+                n = await ingest_teams_channels(
+                    settings, graph, session, qdrant, settings.QDRANT_COLLECTION
+                )
+                logger.info("Teams ingest complete: %d thread chunks", n)
+    finally:
+        await qdrant.close()
+
+
+async def _run_webex_once() -> None:
+    from qdrant_client import AsyncQdrantClient
+
+    from teamrag.config import settings
+    from teamrag.db.session import get_session
+    from teamrag.ingest.webex import WebexClient, ingest_webex_spaces
+
+    missing = [
+        var
+        for var, val in [
+            ("WEBEX_BOT_TOKEN", settings.WEBEX_BOT_TOKEN),
+            ("WEBEX_ORG_ID", settings.WEBEX_ORG_ID),
+        ]
+        if not val
+    ]
+    if missing:
+        logger.error(
+            "Missing Webex configuration: %s. Set in .env — see docs/ingest-teams-webex.md.",
+            ", ".join(missing),
+        )
+        sys.exit(1)
+
+    qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+    try:
+        await _ensure_qdrant_collection(qdrant, settings)
+        async for session in get_session():
+            async with WebexClient(settings) as wx:
+                n = await ingest_webex_spaces(
+                    settings, wx, session, qdrant, settings.QDRANT_COLLECTION
+                )
+                logger.info("Webex ingest complete: %d thread chunks", n)
+    finally:
+        await qdrant.close()
+
+
+async def _run_chat_once() -> None:
+    await _run_teams_once()
+    await _run_webex_once()
+
+
+async def _poll_loop(coro_factory, label: str) -> None:
+    from teamrag.config import settings
+
+    interval = max(30, int(settings.CHAT_INGEST_POLL_INTERVAL_SECONDS))
+    while True:
+        logger.info("Starting %s poll cycle", label)
+        try:
+            await coro_factory()
+        except Exception:
+            logger.exception("%s poll cycle failed", label)
+        logger.info("Sleeping %ds until next %s poll", interval, label)
+        await asyncio.sleep(interval)
+
+
+def main() -> None:
+    argv = [a for a in sys.argv[1:] if a != "--poll"]
+    poll = "--poll" in sys.argv
+    if not argv:
+        print("Usage: python -m teamrag.ingest <source> [--poll]")
+        print("  Sources: confluence, github, teams, webex, chat")
+        print("  --poll  Run Teams/Webex/chat on CHAT_INGEST_POLL_INTERVAL_SECONDS (teams/webex/chat only).")
+        sys.exit(1)
+
+    source = argv[0].lower()
     if source == "confluence":
         asyncio.run(_run_confluence())
     elif source == "github":
         asyncio.run(_run_github())
+    elif source == "teams":
+        if poll:
+            asyncio.run(_poll_loop(_run_teams_once, "teams"))
+        else:
+            asyncio.run(_run_teams_once())
+    elif source == "webex":
+        if poll:
+            asyncio.run(_poll_loop(_run_webex_once, "webex"))
+        else:
+            asyncio.run(_run_webex_once())
+    elif source == "chat":
+        if poll:
+            asyncio.run(_poll_loop(_run_chat_once, "chat"))
+        else:
+            asyncio.run(_run_chat_once())
     else:
-        logger.error("Unknown source: %s. Valid sources: confluence, github", source)
+        logger.error(
+            "Unknown source: %s. Valid sources: confluence, github, teams, webex, chat",
+            source,
+        )
         sys.exit(1)
 
 
