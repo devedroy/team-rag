@@ -25,9 +25,9 @@ Edit `.env` and set `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` (the
 docker compose up -d
 ```
 
-This starts three services: **postgres** (5432), **qdrant** (6333/6334), and **tei** (8080).
+This starts four services: **postgres** (5432), **qdrant** (6333/6334), **tei** (8080), and **open-webui** (3000).
 
-> Note: The `tei` service downloads BGE-M3 (~570 MB) on first run. It may take 2–3 minutes before its healthcheck passes.
+> Note: The `tei` service downloads BGE-M3 (~570 MB) on first run. It may take 2–3 minutes before its healthcheck passes. Open WebUI will be accessible at `http://localhost:3000` once the stack is running.
 
 ### 3. Run database migrations
 
@@ -35,15 +35,29 @@ This starts three services: **postgres** (5432), **qdrant** (6333/6334), and **t
 DATABASE_URL=postgresql+asyncpg://teamrag:teamrag@localhost:5432/teamrag alembic upgrade head
 ```
 
-### 4. Verify all services are healthy
+### 4. Start the FastAPI application
+
+The FastAPI gateway runs on your host machine (not in Docker), on port 8000:
+
+```bash
+uv run fastapi run src/teamrag/main.py --port 8000
+```
+
+The application will be available at `http://localhost:8000`. Open WebUI (on port 3000) communicates with it via the `TEAMRAG_API_URL` configured in `.env`.
+
+### 5. Verify all services are healthy
 
 ```bash
 docker compose ps
 ```
 
-All three services should show `healthy` in the Status column before running any application code.
+All four Docker services should show `healthy` in the Status column before starting the FastAPI application. You can also test the health endpoint:
 
-### 5. Stop the stack
+```bash
+curl http://localhost:8000/health
+```
+
+### 6. Stop the stack
 
 ```bash
 docker compose down

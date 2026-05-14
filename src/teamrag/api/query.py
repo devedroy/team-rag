@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
 from teamrag.retrieval import semantic_search
+from teamrag.services.retrieval import ChunkResult
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,11 +20,8 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=100)
 
 
-class ChunkResult(BaseModel):
-    content: str
-    source_url: str
-    page_title: str
-    score: float
+# Re-export ChunkResult so existing imports from this module continue to work.
+__all__ = ["ChunkResult", "QueryRequest", "QueryResponse"]
 
 
 class QueryResponse(BaseModel):
