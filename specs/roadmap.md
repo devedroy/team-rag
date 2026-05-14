@@ -109,7 +109,7 @@ Gate private content to squad members.
 
 - Keycloak (or Okta/Google Workspace) group sync
 - Nightly job: refresh `channel_id → user_ids` and `repo → squad` mappings in Postgres
-- Private Slack channels, squad repos tagged `acl_tags: ["squad-payments", "tier-1"]`
+- Private Teams/Webex channels, squad repos tagged `acl_tags: ["squad-payments", "tier-1"]`
 - Per-user group lookup injected into every query filter
 
 **Done when:** A user in squad-payments sees private payments channel results; a user outside does not.

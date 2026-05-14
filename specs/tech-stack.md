@@ -55,7 +55,7 @@ The retrieval API returns chunks + metadata. The LLM is called after retrieval w
 | Component | Choice | Notes |
 |---|---|---|
 | Chat frontend | **Open WebUI** or **LibreChat** | Both self-hostable, multi-user, SSO-ready, support custom backends |
-| Slack bot | Custom **Bolt** app | Calls the FastAPI retrieval gateway, returns citations |
+| Teams/Webex bot | Custom bot integration | Calls the FastAPI retrieval gateway, returns citations |
 
 ### Auth & Access Control
 

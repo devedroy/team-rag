@@ -112,7 +112,7 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 - Domain: Software Engineering
 - Size: 15–50 users (multiple squads)
 - Hosting: Self-hosted (data must stay internal)
-- Interfaces: MCP server (Claude Code, Cursor, any MCP-compatible IDE), Chat UI, Slack bot, internal API
+- Interfaces: MCP server (Claude Code, Cursor, any MCP-compatible IDE), Chat UI, Teams/Webex bot, internal API
 - Access model: Tiered (sensitive sources gated, rest open)
 
 **Priorities (ranked)**
@@ -123,7 +123,7 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 5. Onboarding new members
 
 **Knowledge sources to ingest**
-- Slack/Teams chats
+- Teams/Webex chats
 - Docs (Confluence/Notion/Drive)
 - Code & PRs (GitHub/GitLab)
 - Tickets (Jira/Linear)
@@ -139,9 +139,9 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 - **Repeat-question killer** — "How do I deploy to staging?", "Who owns the billing service?", "What's our SLA for incident response?" — answered instantly from your team's own knowledge.
 - **Decision support** — "Have we tried X before?" surfaces past attempts, outcomes, and post-mortems so you don't repeat mistakes.
 - **Cross-functional context** — Engineers can query product specs, PMs can query technical constraints, support can query engineering changelogs — without bothering each other.
-- **Meeting & standup intelligence** — "What did we commit to in last week's planning?" or "Summarize all discussions about the checkout redesign across Slack and docs."
+- **Meeting & standup intelligence** — "What did we commit to in last week's planning?" or "Summarize all discussions about the checkout redesign across Teams/Webex and docs."
 - **Ticket triage & duplicate detection** — New bug reports auto-matched against historical tickets and resolutions.
-- **Code archaeology** — "Why does this function exist?" pulls relevant PRs, design docs, and Slack threads that explain the context.
+- **Code archaeology** — "Why does this function exist?" pulls relevant PRs, design docs, and Teams/Webex threads that explain the context.
 - **Compliance & audit trail** — Searchable record of who decided what, when, and based on what evidence.
 
 ---
@@ -149,7 +149,7 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 ## High-Value Queries
 
 ### Tribal knowledge (priority #1)
-- "Why did we choose Kafka over RabbitMQ?" → pulls the design doc + Slack debate + PR discussion
+- "Why did we choose Kafka over RabbitMQ?" → pulls the design doc + Teams/Webex thread + PR discussion
 - "Who originally built the payments service and what were the constraints?"
 - "What workarounds exist for the legacy auth system?"
 - "What did we learn from the 2024 outage?" → post-mortems + retro notes
@@ -210,7 +210,7 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 
 ### Human interfaces
 - **Chat UI:** Open WebUI or LibreChat (self-hostable, multi-user, SSO-ready)
-- **Slack bot:** custom Bolt app calling the FastAPI gateway
+- **Teams/Webex bot:** custom bot integration calling the FastAPI gateway
 - **Internal API:** FastAPI service — all interfaces talk to this
 
 ### Auth & ACLs
@@ -222,7 +222,7 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 ## Tiered Access Control Design
 
 ### Tier 0 — Open to all engineers (~70% of content)
-Public Slack channels, public Confluence spaces, public repos, public Jira projects, engineering all-hands notes.
+Public Teams/Webex channels, public Confluence spaces, public repos, public Jira projects, engineering all-hands notes.
 
 ### Tier 1 — Squad-gated (~25%)
 Private squad channels, squad-owned repos, squad Jira projects → only members of that squad.
@@ -245,8 +245,8 @@ Qdrant supports this natively in its filter DSL.
 
 ## Source-by-Source Ingestion Plan
 
-### Slack (highest tribal-knowledge value, hardest to do well)
-- Use Slack's Conversations API + Events API for live updates
+### Teams/Webex (highest tribal-knowledge value, hardest to do well)
+- Use Microsoft Graph API (Teams) and Webex Messaging API for live updates
 - Chunk by *thread*, not message — preserve full conversation
 - Filter aggressively: skip channels with <5 members, skip bot messages, skip channels matching `#random`, `#fun-*`, `#announcements`
 - Signal boost: threads with reactions, threads with >3 replies, threads where senior engineers participated
@@ -276,7 +276,7 @@ Two separate pipelines:
 - Tag meeting type: standup (low value, skip), planning (medium), architecture review (high), retro (high)
 
 ### Emails (defer to phase 2)
-Honest advice: skip in v1. Email-to-noise ratio is brutal and value overlaps with Slack/Docs. Revisit after v1 ships.
+Honest advice: skip in v1. Email-to-noise ratio is brutal and value overlaps with Teams/Webex/Docs. Revisit after v1 ships.
 
 ---
 
@@ -294,7 +294,7 @@ Each phase is a vertical feature slice — one end-to-end path from data source 
 | 3 | Human chat UI | Engineer asks a question, sees answer with clickable source links |
 | 4 | MCP server | Claude Code calls `search_knowledge` and returns grounded answer |
 | 5 | Tier-0 ACLs | Unauthenticated caller cannot retrieve private content |
-| 6 | Slack → retrieve → cite | "Why did we switch to Kafka?" returns a Slack thread chunk |
+| 6 | Teams/Webex → retrieve → cite | "Why did we switch to Kafka?" returns a Teams/Webex thread chunk |
 | 7 | Squad-level ACLs (Tier-1) | Squad member sees private results; outsider does not |
 | 8 | Jira/Linear → retrieve → cite | "Have we tried X?" returns a resolved ticket with outcome |
 | 9 | GitHub code (AST) → retrieve | IDE agent gets function chunk + the PR that introduced it |
@@ -326,9 +326,9 @@ Also add inline 👍/👎 buttons in every interface — feed these back into re
 
 1. **Decision provenance is everything** — every chunk needs metadata: `decision_date`, `decision_owner`, `superseded_by`. This is what makes tribal knowledge searchable beyond keywords.
 
-2. **Temporal awareness** — engineering knowledge decays. A 2021 Slack thread about "the new auth system" is misleading today. Tag every chunk with timestamps and weight recent content higher, or filter by date in queries.
+2. **Temporal awareness** — engineering knowledge decays. A 2021 Teams/Webex thread about "the new auth system" is misleading today. Tag every chunk with timestamps and weight recent content higher, or filter by date in queries.
 
-3. **Cross-source linking** — the magic happens when a Jira ticket → links to its PR → links to the design doc → links to the Slack thread where it was debated. Store these relationships as graph edges or metadata.
+3. **Cross-source linking** — the magic happens when a Jira ticket → links to its PR → links to the design doc → links to the Teams/Webex thread where it was debated. Store these relationships as graph edges or metadata.
 
 4. **Stale-content detection** — flag chunks where the underlying file/ticket changed but RAG still has the old version. Re-index on webhooks, not just batch jobs.
 
@@ -336,17 +336,17 @@ Also add inline 👍/👎 buttons in every interface — feed these back into re
 
 ## Gotchas & Hard Parts
 
-- **Slack noise** — 80% of Slack is low-signal. Filter by channel allowlist + reactions/thread length as signal.
+- **Teams/Webex noise** — 80% of Teams/Webex chats are low-signal. Filter by channel allowlist + reactions/thread length as signal.
 - **Email is mostly garbage for RAG** — newsletters, automated alerts, calendar invites pollute it heavily. Defer until v2.
 - **Code RAG ≠ doc RAG** — code needs different embeddings (CodeBERT, Voyage-code-3) and AST chunking. Don't naively embed `.py` files like markdown.
-- **Permissions are non-trivial** — if a Slack channel is private, the RAG must enforce that *at retrieval time*, not just at ingestion. Per-user query filtering based on actual ACLs.
-- **Hallucinated citations** — even with RAG, LLMs invent sources. Always render answers with clickable citations to the original Slack/Jira/Doc URL.
+- **Permissions are non-trivial** — if a Teams/Webex channel is private, the RAG must enforce that *at retrieval time*, not just at ingestion. Per-user query filtering based on actual ACLs.
+- **Hallucinated citations** — even with RAG, LLMs invent sources. Always render answers with clickable citations to the original Teams/Webex/Jira/Doc URL.
 - **Cost** — embedding 1M+ messages + continuous re-indexing adds up. Budget ~$200–2000/month depending on scale.
 - **Cursor/VS Code integration is tricky** — Continue.dev works well, but your team will expect it to also do code completion. Be clear it's a *retrieval* tool, not Copilot.
-- **Slack ACL sync is the trap** — channel membership changes constantly. Run a nightly job to refresh `channel_id → user_ids` mappings.
-- **Decision metadata is manual at first** — auto-extracting "this is a decision" from Slack/docs is hard. Consider a lightweight `/decision` Slack command that explicitly tags decisions for premium indexing.
+- **Teams/Webex ACL sync is the trap** — channel membership changes constantly. Run a nightly job to refresh `channel_id → user_ids` mappings.
+- **Decision metadata is manual at first** — auto-extracting "this is a decision" from Teams/Webex/docs is hard. Consider a lightweight `/decision` bot command that explicitly tags decisions for premium indexing.
 - **70B on one box for 15–50 users** — fine for chat-style usage (5–15 concurrent). If IDE integration sees heavy use, you'll need a second GPU or a smaller model for IDE traffic specifically.
-- **Backfill is slow** — initial ingestion of years of Slack + Confluence can take 1–2 weeks of compute. Plan for it.
+- **Backfill is slow** — initial ingestion of years of Teams/Webex + Confluence can take 1–2 weeks of compute. Plan for it.
 - **Staffing reality** — this is realistically 1–2 engineers for 3 months to v1. Don't try to ship it as a side project.
 
 ---

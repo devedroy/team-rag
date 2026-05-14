@@ -348,7 +348,7 @@ Never manually run SQL DDL. Alembic tracks schema state and prevents conflicts.
 ### ACL Model (Future Phases)
 
 Four tables form the ACL system:
-- **sources** — where data came from (Confluence page, GitHub PR, Slack thread)
+- **sources** — where data came from (Confluence page, GitHub PR, Teams/Webex thread)
 - **chunks** — indexed text segments, each with a source_id
 - **acl_tags** — many-to-many: chunk ↔ access tags (e.g., "tier-0", "squad-payments")
 - **audit_log** — immutable query log (who asked what, what ACL tags were applied, how many results)
