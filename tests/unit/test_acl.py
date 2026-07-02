@@ -59,3 +59,38 @@ def test_qdrant_filter_unauthenticated_tier0() -> None:
     assert isinstance(missing_cond, IsEmptyCondition)
     assert missing_cond.is_empty.key == "acl_tags"
     assert flt.min_should is None
+
+
+def test_qdrant_filter_authenticated_groups_includes_tier0_and_groups():
+    pytest.importorskip("qdrant_client")
+    from qdrant_client.models import FieldCondition, IsEmptyCondition, MatchAny, MatchValue
+
+    from teamrag.acl import AclFilterMode, qdrant_filter_for_mode
+
+    flt = qdrant_filter_for_mode(
+        AclFilterMode.AUTHENTICATED_GROUPS, user_groups=("squad-payments", "squad-platform")
+    )
+    kinds = {type(c) for c in flt.should}
+    assert IsEmptyCondition in kinds
+    match_any = [c for c in flt.should if isinstance(c, FieldCondition) and isinstance(c.match, MatchAny)]
+    assert match_any and set(match_any[0].match.any) == {"squad-payments", "squad-platform"}
+    tier0 = [c for c in flt.should if isinstance(c, FieldCondition) and isinstance(c.match, MatchValue)]
+    assert tier0 and tier0[0].match.value == "tier-0"
+
+
+def test_qdrant_filter_authenticated_groups_without_groups_falls_back_to_tier0():
+    pytest.importorskip("qdrant_client")
+    from teamrag.acl import AclFilterMode, qdrant_filter_for_mode
+
+    flt = qdrant_filter_for_mode(AclFilterMode.AUTHENTICATED_GROUPS, user_groups=())
+    tier0_only = qdrant_filter_for_mode(AclFilterMode.UNAUTHENTICATED_TIER_0)
+    assert flt == tier0_only
+
+
+def test_resolve_acl_context():
+    from teamrag.acl import AclFilterMode, resolve_acl_context
+    from teamrag.auth import UserIdentity
+
+    assert resolve_acl_context(None) == (AclFilterMode.UNAUTHENTICATED_TIER_0, ())
+    ident = UserIdentity(sub="s", username="alice", groups=("squad-payments",))
+    assert resolve_acl_context(ident) == (AclFilterMode.AUTHENTICATED_GROUPS, ("squad-payments",))
