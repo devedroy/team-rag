@@ -52,3 +52,62 @@ def extract_pr_links(text: str) -> list[str]:
         if match not in seen:
             seen.append(match)
     return seen
+
+
+_SEARCH_FIELDS = "summary,description,status,assignee,reporter,labels,resolution,updated,parent"
+
+
+class JiraClient:
+    """Async Jira Cloud REST v3 client (basic auth: email + API token)."""
+
+    def __init__(self, settings) -> None:
+        self._base_url = settings.JIRA_URL.rstrip("/")
+        self._auth = (settings.JIRA_EMAIL, settings.JIRA_API_TOKEN)
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> "JiraClient":
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url, auth=self._auth, timeout=30.0
+        )
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+
+    async def search_issues(self, project_keys: list[str], max_issues: int):
+        """Yield raw issue dicts, newest-updated first, across pages."""
+        jql = f"project in ({','.join(project_keys)}) ORDER BY updated DESC"
+        params: dict = {"jql": jql, "maxResults": 100, "fields": _SEARCH_FIELDS}
+        yielded = 0
+        while True:
+            response = await self._client.get("/rest/api/3/search/jql", params=params)
+            response.raise_for_status()
+            data = response.json()
+            for issue in data.get("issues", []):
+                yield issue
+                yielded += 1
+                if yielded >= max_issues:
+                    return
+            token = data.get("nextPageToken")
+            if not token or data.get("isLast"):
+                return
+            params = {**params, "nextPageToken": token}
+
+    async def fetch_comments(self, issue_key: str) -> list[dict]:
+        """All comments for an issue (paginated by startAt/total)."""
+        comments: list[dict] = []
+        start_at = 0
+        while True:
+            response = await self._client.get(
+                f"/rest/api/3/issue/{issue_key}/comment",
+                params={"startAt": start_at, "maxResults": 50},
+            )
+            response.raise_for_status()
+            data = response.json()
+            page = data.get("comments", [])
+            comments.extend(page)
+            total = int(data.get("total", len(comments)))
+            start_at += len(page)
+            if start_at >= total or not page:
+                return comments
