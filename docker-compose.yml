@@ -62,7 +62,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.1
-    command: ["start-dev", "--import-realm"]
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
@@ -70,8 +70,12 @@ services:
       - "8081:8080"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
+      # Mounted at data/ (not data/h2) so the volume inherits keycloak-writable
+      # ownership from the image; a fresh volume at data/h2 is root-owned and
+      # crashes boot (H2 AccessDeniedException). H2 files persist in data/h2.
+      - keycloak_data:/opt/keycloak/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/9000' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -83,3 +87,4 @@ volumes:
   qdrant_data:
   tei_cache:
   open-webui:
+  keycloak_data:
