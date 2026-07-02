@@ -13,8 +13,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from teamrag.auth import InvalidTokenError, resolve_identity
 from teamrag.config import settings
-from teamrag.services.retrieval import ChunkResult, retrieve_chunks
+from teamrag.retrieval import semantic_search
+from teamrag.services.retrieval import ChunkResult
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -205,6 +207,11 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
             return _empty_streaming_response(msg)
         return JSONResponse(content=_empty_non_streaming_response(msg))
 
+    try:
+        identity = await resolve_identity(http_request)
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
     user_messages = [m for m in request.messages if m.role == "user"]
     if not user_messages:
         raise HTTPException(status_code=400, detail="No user message found in messages list.")
@@ -212,13 +219,29 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
 
     qdrant_client = getattr(http_request.app.state, "qdrant_client", None)
     if qdrant_client is not None:
-        chunks = await retrieve_chunks(
-            query=retrieval_query,
-            qdrant_client=qdrant_client,
-            collection=settings.QDRANT_COLLECTION,
-            tei_url=settings.TEI_URL,
-            top_k=settings.RAG_TOP_K,
-        )
+        try:
+            hits = await semantic_search(
+                query=retrieval_query,
+                top_k=settings.RAG_TOP_K,
+                tei_url=settings.TEI_URL,
+                qdrant_client=qdrant_client,
+                collection_name=settings.QDRANT_COLLECTION,
+                request=http_request,
+                identity=identity,
+            )
+        except Exception as exc:
+            logger.warning("Retrieval failed: %s — proceeding without context chunks", exc)
+            chunks = []
+        else:
+            chunks = [
+                ChunkResult(
+                    content=h.content,
+                    source_url=h.source_url,
+                    page_title=h.page_title,
+                    score=float(h.score) if h.score is not None else 0.0,
+                )
+                for h in hits
+            ]
     else:
         logger.warning("Qdrant client unavailable — proceeding without context chunks")
         chunks = []
