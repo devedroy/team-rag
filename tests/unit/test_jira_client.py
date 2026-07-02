@@ -88,6 +88,22 @@ async def test_fetch_comments_paginates_start_at():
 
 
 @pytest.mark.asyncio
+async def test_search_issues_stops_on_empty_page_with_token():
+    """Regression: empty issues page with a truthy token must not loop forever."""
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(dict(request.url.params))
+        return httpx.Response(200, json={"issues": [], "nextPageToken": "loop"})
+
+    client = _client_with_handler(handler)
+    got = [i async for i in client.search_issues(["ENG"], max_issues=10)]
+    await client._client.aclose()
+    assert got == []
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_search_issues_raises_on_http_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"errorMessages": ["bad auth"]})

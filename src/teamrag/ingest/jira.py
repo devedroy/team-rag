@@ -84,13 +84,14 @@ class JiraClient:
             response = await self._client.get("/rest/api/3/search/jql", params=params)
             response.raise_for_status()
             data = response.json()
-            for issue in data.get("issues", []):
-                yield issue
-                yielded += 1
+            issues = data.get("issues", [])
+            for issue in issues:
                 if yielded >= max_issues:
                     return
+                yield issue
+                yielded += 1
             token = data.get("nextPageToken")
-            if not token or data.get("isLast"):
+            if not token or data.get("isLast") or not issues:
                 return
             params = {**params, "nextPageToken": token}
 
@@ -107,7 +108,7 @@ class JiraClient:
             data = response.json()
             page = data.get("comments", [])
             comments.extend(page)
-            total = int(data.get("total", len(comments)))
+            total = int(data.get("total") or len(comments))
             start_at += len(page)
             if start_at >= total or not page:
                 return comments
