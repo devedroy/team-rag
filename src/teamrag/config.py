@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# BGE-M3 (served by TEI) emits 1024-dim dense vectors; the Qdrant collection
+# must be created with the same size or upserts fail.
+EMBEDDING_DIM = 1024
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

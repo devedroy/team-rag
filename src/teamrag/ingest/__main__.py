@@ -13,13 +13,15 @@ logger = logging.getLogger(__name__)
 async def _ensure_qdrant_collection(qdrant, settings) -> None:
     from qdrant_client.models import Distance, VectorParams
 
+    from teamrag.config import EMBEDDING_DIM
+
     try:
         await qdrant.get_collection(settings.QDRANT_COLLECTION)
     except Exception:
         logger.info("Creating Qdrant collection '%s'", settings.QDRANT_COLLECTION)
         await qdrant.create_collection(
             collection_name=settings.QDRANT_COLLECTION,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
         )
 
 

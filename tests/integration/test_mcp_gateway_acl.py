@@ -7,6 +7,7 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
+from teamrag.config import EMBEDDING_DIM
 from teamrag.main import app
 from teamrag.mcp_server.gateway_client import TeamRagGateway
 from teamrag.mcp_server.handlers import search_knowledge_handler
@@ -26,7 +27,7 @@ async def _ensure_collection(client: AsyncQdrantClient, name: str) -> None:
     except Exception:
         await client.create_collection(
             collection_name=name,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
         )
 
 
