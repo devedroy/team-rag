@@ -89,6 +89,56 @@ Same entrypoint via the **`teamrag-mcp`** script (`teamrag-mcp --transport stdio
 
 ---
 
+## Squad ACLs & Keycloak auth (Phase 7)
+
+The gateway supports optional JWT bearer auth backed by **Keycloak** (`docker compose` service, `localhost:8081`, realm **`teamrag`**). With a valid token, callers see **tier-0 content plus any squads they belong to** (`acl_tags ∩ (tier-0 ∪ user_groups) ≠ ∅`). Without a token — or with `OIDC_ISSUER` unset — the gateway falls back to the Phase 5 tier-0-only behavior; a malformed or expired token returns `401`.
+
+**Dev logins** (seeded via `keycloak/realm-teamrag.json`, client `teamrag-gateway`):
+
+| Username | Password | Groups |
+|---|---|---|
+| `alice` | `alice-password` | `squad-payments` |
+| `bob` | `bob-password` | *(none)* |
+
+Fetch a token with the password grant:
+
+```bash
+curl -s -X POST http://localhost:8081/realms/teamrag/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=teamrag-gateway \
+  -d username=alice -d password=alice-password | jq -r .access_token
+```
+
+Then call the gateway with `Authorization: Bearer <token>`:
+
+```bash
+curl -s -X POST http://localhost:8000/query \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"payments rollout","top_k":5}'
+```
+
+**New environment variables** (see `.env.example`):
+
+- **`OIDC_ISSUER`** — Keycloak realm issuer URL; empty disables auth entirely (default dev value: `http://localhost:8081/realms/teamrag`)
+- **`OIDC_AUDIENCE`** — expected JWT audience claim (default `teamrag-gateway`)
+- **`KEYCLOAK_BASE_URL`** / **`KEYCLOAK_REALM`** — used by the sync job and tests to reach Keycloak's admin/token endpoints
+- **`KEYCLOAK_ADMIN_USER`** / **`KEYCLOAK_ADMIN_PASSWORD`** — dev-only Keycloak admin credentials (used by `python -m teamrag.sync` when syncing group membership, not needed for `--seed`)
+- **`TEAMRAG_BEARER_TOKEN`** — optional token the MCP server forwards to the gateway on every tool call, so IDE assistants inherit the caller's ACL scope
+
+**Resource → ACL sync job.** `resource_acl_mappings` (Postgres) maps an external resource (a GitHub repo, a Confluence space, …) to the ACL tags its ingested chunks should carry. Refresh it with:
+
+```bash
+# From live Keycloak group attributes (requires KEYCLOAK_ADMIN_PASSWORD)
+uv run python -m teamrag.sync
+
+# Or seed a mapping directly (repeatable flag), no Keycloak admin call needed
+uv run python -m teamrag.sync --seed "github:org/payments-svc:squad-payments,tier-1"
+```
+
+**Merge / manual validation:** [`specs/2026-07-02-phase-7-squad-acls/validation.md`](specs/2026-07-02-phase-7-squad-acls/validation.md).
+
+---
+
 ## Table of Contents
 
 1. [Goals & Context](#goals--context)
