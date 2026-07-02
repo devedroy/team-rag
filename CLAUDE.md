@@ -348,7 +348,7 @@ Never manually run SQL DDL. Alembic tracks schema state and prevents conflicts.
 ### ACL Model (Phase 7 — shipped)
 
 Four core tables form the ACL system:
-- **sources** — where data came from (Confluence page, GitHub PR, Teams/Webex thread)
+- **sources** — where data came from (Confluence page, GitHub PR, Teams/Webex thread, Jira ticket)
 - **chunks** — indexed text segments, each with a source_id
 - **acl_tags** — many-to-many: chunk ↔ access tags (e.g., "tier-0", "squad-payments")
 - **audit_log** — immutable query log (who asked what, what ACL tags were applied, how many results)
@@ -358,10 +358,28 @@ In Phase 0, these tables were empty. Phase 5 enforced tier-0-only filtering for 
 - **Keycloak** (`docker compose` service, `localhost:8081`, realm `teamrag`) is the identity provider. Dev users `alice` (member of `squad-payments`) and `bob` (no groups) ship in the seeded realm for local testing.
 - **`POST /query`, `POST /document`, and `/v1/chat/completions`** accept an optional `Authorization: Bearer <JWT>` header. `teamrag.auth` validates the token against Keycloak's JWKS (issuer/audience checked via `OIDC_ISSUER`/`OIDC_AUDIENCE`); a malformed/expired/wrong-signature token returns **401**. No token (or `OIDC_ISSUER` unset) falls back to unauthenticated tier-0-only visibility — Phase 5 behavior is preserved.
 - **`teamrag.acl.AclFilterMode`** has two modes: `UNAUTHENTICATED_TIER_0` and `AUTHENTICATED_GROUPS`. `resolve_acl_context(identity)` maps a validated `UserIdentity` (with `groups: tuple[str, ...]` from the JWT `groups` claim) to `AUTHENTICATED_GROUPS`, and `qdrant_filter_for_mode(mode, user_groups)` widens the Qdrant filter to `tier-0 ∪ user_groups` — so a query time check is effectively `user's groups ∩ chunk's acl_tags ≠ ∅` (tier-0 always included).
-- **`resource_acl_mappings`** table (`source_type`, `resource_key`, `acl_tags`) maps an external resource (e.g., a GitHub repo or Confluence space) to the ACL tags its chunks should carry. Ingestion connectors look up this table at chunk-write time to tag chunks beyond the tier-0 default.
-- **`python -m teamrag.sync`** refreshes `resource_acl_mappings` — either by fetching Keycloak group membership/attributes (`fetch_keycloak_groups` + `mappings_from_groups`), or by seeding a mapping directly via `--seed source_type:resource_key:tag1,tag2` (repeatable flag). See README "Phase 7" section for usage.
+- **`resource_acl_mappings`** table (`source_type`, `resource_key`, `acl_tags`) maps an external resource (e.g., a GitHub repo, Confluence space, or Jira project) to the ACL tags its chunks should carry. Ingestion connectors look up this table at chunk-write time to tag chunks beyond the tier-0 default.
+- **`python -m teamrag.sync`** refreshes `resource_acl_mappings` — either by fetching Keycloak group membership/attributes (`fetch_keycloak_groups` + `mappings_from_groups`, which reads the multi-valued group attributes `repos` / `spaces` / `channels` / `rooms` / `projects` → `github` / `confluence` / `teams` / `webex` / `jira`), or by seeding a mapping directly via `--seed source_type:resource_key:tag1,tag2` (repeatable flag). See README "Phase 7" section for usage.
 - **`audit_log`** rows record `caller_id` (JWT subject, or `"anonymous"`) and `acl_tags_applied` (the resolved filter tags) per query — see `tests/integration/test_phase7_squad_acls.py::test_audit_log_records_squad_query`.
 - **MCP server** forwards an optional bearer token (`TEAMRAG_BEARER_TOKEN` env var) to the gateway on every tool call, so IDE assistants inherit the caller's ACL scope.
+
+### Ingestion Connectors (`src/teamrag/ingest/`)
+
+One module per source, sharing the chunk → embed → upsert pipeline in `pipeline.py`:
+
+```
+src/teamrag/ingest/
+├── __main__.py                     # CLI: python -m teamrag.ingest <confluence|github|jira|teams|webex|chat> [--poll]
+├── pipeline.py                     # embed_chunks, upsert_to_qdrant, write_to_postgres / write_chat_thread_to_postgres
+├── acl_mapping.py                  # resource_acl_mappings lookup applied to chunks before upsert (Phase 7)
+├── confluence.py                   # Confluence pages → Markdown chunks (Phase 1)
+├── github.py                       # GitHub PRs → chunks (Phase 2)
+├── teams.py / webex.py             # chat threads → one chunk per thread (Phase 6)
+├── chat_thread.py / chat_signal.py # shared chat assembly/signal helpers (Phase 6)
+└── jira.py                         # Jira Cloud tickets → one chunk per ticket (Phase 8)
+```
+
+**Jira** (`jira.py`, Phase 8) — `JiraClient` (async httpx, email + API token) runs a JQL search over `JIRA_PROJECT_KEYS` (`project in (...) ORDER BY updated DESC`, capped by `JIRA_MAX_ISSUES`) and fetches comments per issue. `adf_to_text` recursively flattens Jira Cloud's ADF (Atlassian Document Format) JSON bodies to plain text. `assemble_issue_document` builds one markdown document per ticket (title, description, comments, resolution line); `chunk_issue_document` turns it into a single chunk with citation `source_url = {JIRA_URL}/browse/{issue_key}`, stable id `sha256("jira:{issue_key}:0")`, and metadata `issue_key`, `project_key`, `status`, `assignee`, `reporter`, `labels`, `epic`, `resolution`, `linked_prs` (GitHub PR URLs regex-extracted from the document, the Phase 2 cross-link). `python -m teamrag.ingest jira [--poll]` reuses the generic single-chunk Postgres writer (`write_chat_thread_to_postgres`, `source_type="jira"`); polling is the re-index-on-status-change mechanism — a status change bumps `updated`, so the next poll re-fetches and idempotently overwrites the same stable chunk id. ACL: resource key = `project_key`, gated via the Keycloak group attribute `projects` (see "ACL Model" above).
 
 ### Health Checks
 

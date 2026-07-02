@@ -139,6 +139,35 @@ uv run python -m teamrag.sync --seed "github:org/payments-svc:squad-payments,tie
 
 ---
 
+## Jira ingest (Phase 8)
+
+The Jira connector indexes **one chunk per ticket** — title + description + all comments + resolution, so "have we tried X before?" queries can surface a resolved ticket with its outcome. Jira Cloud REST v3 returns rich-text fields as ADF (Atlassian Document Format) JSON; the connector recursively extracts plain text. Citations use the ticket's `/browse/{issue_key}` URL.
+
+**What gets indexed** per ticket: `status`, `assignee`, `reporter`, `labels`, `epic` (parent issue key), `resolution`, and `linked_prs` — GitHub PR URLs regex-extracted from the description/comments, the same Phase 2 cross-link pattern used elsewhere. Re-indexing happens on the next poll: a status change bumps the ticket's `updated` timestamp, so `--poll` picks it up and upserts the same stable chunk id (`sha256("jira:{issue_key}:0")`) with fresh metadata.
+
+**New environment variables** (see `.env.example`):
+
+- **`JIRA_URL`** — your Jira Cloud base URL, e.g. `https://your-org.atlassian.net`
+- **`JIRA_EMAIL`** / **`JIRA_API_TOKEN`** — Jira Cloud basic-auth credentials (email + API token, same pattern as Confluence)
+- **`JIRA_PROJECT_KEYS`** — comma-separated project keys to ingest, e.g. `ENG,PAY`
+- **`JIRA_MAX_ISSUES`** (default `200`) — cap on issues fetched per run, newest-updated first
+- **`JIRA_POLL_INTERVAL_SECONDS`** (default `300`) — delay between `--poll` cycles
+
+**Run ingest:**
+
+```bash
+uv run python -m teamrag.ingest jira
+
+# Continuous polling (re-indexes tickets whose status/updated timestamp changed)
+uv run python -m teamrag.ingest jira --poll
+```
+
+**ACL note:** Jira projects are gated the same way as GitHub repos and Confluence spaces (Phase 7 `resource_acl_mappings`), keyed by `project_key`. `python -m teamrag.sync` reads the Keycloak group attribute **`projects`** (multi-valued, alongside `repos` / `spaces` / `channels` / `rooms`) and maps each named project to `[<group-name>, "tier-1"]`; without a mapping, ingested Jira chunks default to `tier-0`.
+
+**Merge / manual validation:** [`specs/2026-07-03-phase-8-jira-ingest/validation.md`](specs/2026-07-03-phase-8-jira-ingest/validation.md).
+
+---
+
 ## Table of Contents
 
 1. [Goals & Context](#goals--context)
