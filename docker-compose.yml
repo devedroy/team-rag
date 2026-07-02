@@ -25,7 +25,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,7 +41,7 @@ services:
     volumes:
       - tei_cache:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
