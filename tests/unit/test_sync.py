@@ -34,6 +34,11 @@ def test_mappings_from_groups_maps_attributes_to_source_types():
     assert len(rows) == 5
 
 
+def test_mappings_from_groups_maps_projects_to_jira():
+    groups = [{"name": "squad-payments", "attributes": {"projects": ["PAY"]}}]
+    assert ("jira", "PAY", ["squad-payments", "tier-1"]) in mappings_from_groups(groups)
+
+
 def test_parse_seed_arg():
     assert parse_seed_arg("github:org/repo:squad-payments,tier-1") == (
         "github",

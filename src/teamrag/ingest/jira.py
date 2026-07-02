@@ -112,3 +112,59 @@ class JiraClient:
             start_at += len(page)
             if start_at >= total or not page:
                 return comments
+
+
+def assemble_issue_document(issue: dict, comments: list[dict]) -> str:
+    """Ticket → one markdown document: title, description, comments, resolution."""
+    fields = issue.get("fields", {}) or {}
+    key = issue.get("key", "")
+    summary = str(fields.get("summary") or "")
+    parts: list[str] = [f"# [{key}] {summary}".strip()]
+
+    description = adf_to_text(fields.get("description"))
+    if description:
+        parts.append(description)
+
+    comment_lines: list[str] = []
+    for comment in comments:
+        author = ((comment.get("author") or {}).get("displayName")) or "unknown"
+        body = adf_to_text(comment.get("body"))
+        if body:
+            comment_lines.append(f"**{author}**: {body}")
+    if comment_lines:
+        parts.append("## Comments\n" + "\n".join(comment_lines))
+
+    resolution = (fields.get("resolution") or {}).get("name") if fields.get("resolution") else None
+    parts.append(f"Resolution: {resolution or 'Unresolved'}")
+    return "\n\n".join(parts)
+
+
+def chunk_issue_document(
+    issue: dict, document: str, comments: list[dict], jira_url: str
+) -> list[dict]:
+    """One chunk per ticket with citation + metadata; [] for empty documents."""
+    key = issue.get("key", "")
+    fields = issue.get("fields", {}) or {}
+    summary = str(fields.get("summary") or "")
+    if not key or not document.strip() or not summary.strip():
+        logger.warning("Issue %r produced empty document — skipping", key)
+        return []
+
+    chunk_id = hashlib.sha256(f"jira:{key}:0".encode()).hexdigest()
+    return [{
+        "chunk_id": chunk_id,
+        "content": document,
+        "source_url": f"{jira_url.rstrip('/')}/browse/{key}",
+        "page_title": f"[{key}] {summary}",
+        "last_updated": str(fields.get("updated") or ""),
+        "chunk_index": 0,
+        "issue_key": key,
+        "project_key": key.split("-", 1)[0] if "-" in key else key,
+        "status": ((fields.get("status") or {}).get("name")) or "",
+        "assignee": ((fields.get("assignee") or {}).get("displayName")) or "",
+        "reporter": ((fields.get("reporter") or {}).get("displayName")) or "",
+        "labels": list(fields.get("labels") or []),
+        "epic": ((fields.get("parent") or {}).get("key")) or "",
+        "resolution": ((fields.get("resolution") or {}).get("name")) or "",
+        "linked_prs": extract_pr_links(document),
+    }]
