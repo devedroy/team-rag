@@ -35,6 +35,16 @@ OPTIONAL_QDRANT_PAYLOAD_KEYS: tuple[str, ...] = (
     "reaction_count",
     "has_code_block",
     "last_activity_at",
+    # Phase 8 Jira
+    "issue_key",
+    "project_key",
+    "status",
+    "assignee",
+    "reporter",
+    "labels",
+    "epic",
+    "resolution",
+    "linked_prs",
 )
 
 

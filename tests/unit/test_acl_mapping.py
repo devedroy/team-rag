@@ -34,3 +34,7 @@ def test_apply_acl_mapping_unknown_source_type_noop():
     chunk = {"acl_tags": ["tier-0"]}
     apply_acl_mapping(chunk, "jira", MAPPINGS)
     assert chunk["acl_tags"] == ["tier-0"]
+
+
+def test_resource_key_for_chunk_jira_project():
+    assert resource_key_for_chunk("jira", {"project_key": "PAY"}) == "PAY"

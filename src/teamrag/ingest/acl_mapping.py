@@ -15,6 +15,7 @@ _RESOURCE_KEY_FIELDS: dict[str, str] = {
     "confluence": "space_key",
     "teams": "channel_id",
     "webex": "space_id",
+    "jira": "project_key",
 }
 
 

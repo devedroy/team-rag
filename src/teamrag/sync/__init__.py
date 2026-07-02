@@ -19,6 +19,7 @@ _ATTRIBUTE_SOURCE_TYPES: dict[str, str] = {
     "spaces": "confluence",
     "channels": "teams",
     "rooms": "webex",
+    "projects": "jira",
 }
 
 MappingRow = tuple[str, str, list[str]]
