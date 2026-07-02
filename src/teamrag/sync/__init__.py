@@ -40,13 +40,35 @@ def mappings_from_groups(groups: list[dict]) -> list[MappingRow]:
     return rows
 
 
+def aggregate_mapping_rows(rows: list[MappingRow]) -> list[MappingRow]:
+    """Merge tags for duplicate ``(source_type, resource_key)`` keys.
+
+    Two groups may reference the same resource; without merging, the later
+    row's tags would clobber the earlier group's within a single sync run.
+    Tag order is stable (first occurrence wins) and deduped.
+    """
+    merged: dict[tuple[str, str], list[str]] = {}
+    for source_type, resource_key, tags in rows:
+        existing = merged.setdefault((source_type, resource_key), [])
+        for tag in tags:
+            if tag not in existing:
+                existing.append(tag)
+    return [(st, rk, tags) for (st, rk), tags in merged.items()]
+
+
 def parse_seed_arg(value: str) -> MappingRow:
-    parts = value.split(":", 2)
-    if len(parts) != 3 or not all(parts):
-        raise ValueError(
-            f"--seed must look like source_type:resource_key:tag1,tag2 — got {value!r}"
-        )
-    source_type, resource_key, tags_csv = parts
+    error = ValueError(
+        f"--seed must look like source_type:resource_key:tag1,tag2 — got {value!r}"
+    )
+    head, sep, rest = value.partition(":")
+    if not sep:
+        raise error
+    resource_key, sep, tags_csv = rest.rpartition(":")
+    if not sep:
+        raise error
+    source_type = head
+    if not source_type or not resource_key or not tags_csv:
+        raise error
     tags = [t.strip() for t in tags_csv.split(",") if t.strip()]
     if not tags:
         raise ValueError(f"--seed has no tags: {value!r}")
@@ -81,18 +103,19 @@ async def fetch_keycloak_groups(
 
 
 async def upsert_mappings(session, rows: list[MappingRow]) -> int:
+    import sqlalchemy as sa
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from teamrag.db.models import ResourceAclMapping
 
     count = 0
-    for source_type, resource_key, tags in rows:
+    for source_type, resource_key, tags in aggregate_mapping_rows(rows):
         stmt = (
             pg_insert(ResourceAclMapping)
             .values(source_type=source_type, resource_key=resource_key, acl_tags=tags)
             .on_conflict_do_update(
                 constraint="uq_resource_acl_mappings_type_key",
-                set_={"acl_tags": tags},
+                set_={"acl_tags": tags, "updated_at": sa.func.now()},
             )
         )
         await session.execute(stmt)

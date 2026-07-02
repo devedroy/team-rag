@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from teamrag.sync import mappings_from_groups, parse_seed_arg
+from teamrag.sync import aggregate_mapping_rows, mappings_from_groups, parse_seed_arg
 
 
 def test_mappings_from_groups_maps_attributes_to_source_types():
@@ -34,8 +34,45 @@ def test_parse_seed_arg():
     )
 
 
+def test_parse_seed_arg_keeps_colons_in_resource_key():
+    assert parse_seed_arg("teams:19:abc@thread.tacv2:squad-payments,tier-1") == (
+        "teams",
+        "19:abc@thread.tacv2",
+        ["squad-payments", "tier-1"],
+    )
+
+
 def test_parse_seed_arg_rejects_malformed():
     import pytest
 
     with pytest.raises(ValueError):
         parse_seed_arg("just-nonsense")
+
+    with pytest.raises(ValueError):
+        parse_seed_arg("github:org/repo")  # missing tags part
+
+    with pytest.raises(ValueError):
+        parse_seed_arg("github::squad-payments")  # empty resource key
+
+
+def test_aggregate_mapping_rows_merges_duplicate_resources():
+    groups = [
+        {"name": "squad-payments", "attributes": {"repos": ["org/shared-repo"]}},
+        {"name": "squad-platform", "attributes": {"repos": ["org/shared-repo", "org/platform"]}},
+    ]
+    rows = aggregate_mapping_rows(mappings_from_groups(groups))
+    assert rows == [
+        ("github", "org/shared-repo", ["squad-payments", "tier-1", "squad-platform"]),
+        ("github", "org/platform", ["squad-platform", "tier-1"]),
+    ]
+
+
+def test_aggregate_mapping_rows_dedupes_tags_and_preserves_order():
+    rows = aggregate_mapping_rows(
+        [
+            ("teams", "19:abc", ["squad-a", "tier-1"]),
+            ("teams", "19:abc", ["squad-a", "tier-1"]),
+            ("teams", "19:abc", ["squad-b", "tier-1"]),
+        ]
+    )
+    assert rows == [("teams", "19:abc", ["squad-a", "tier-1", "squad-b"])]
