@@ -42,8 +42,10 @@ filter (`specs/roadmap.md`).
 ## Explicitly out of scope (deferred)
 
 - Tier-2 / restricted allowlists (roadmap "Deferred").
-- Okta / Google Workspace backends (Keycloak only; auth module reads
-  standard OIDC discovery so other IdPs can slot in later).
+- Okta / Google Workspace backends (Keycloak only; the JWKS URL is a
+  hardcoded Keycloak-shaped path — `{OIDC_ISSUER}/protocol/openid-connect/certs`
+  — derived from `OIDC_ISSUER`, not discovered. Generic `.well-known`
+  OIDC discovery so other IdPs can slot in later is future work).
 - SSO for Open WebUI itself; only the gateway API enforces identity.
 - Re-tagging of already-ingested chunks (re-ingest is the supported path).
 

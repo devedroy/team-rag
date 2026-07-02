@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
+from teamrag.acl import TIER_0_TAG
+from teamrag.auth import InvalidTokenError, resolve_identity
+from teamrag.db.models import AuditLog
+from teamrag.db.session import get_session
 from teamrag.retrieval import semantic_search
 from teamrag.services.retrieval import ChunkResult
 
@@ -38,6 +42,11 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
         qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
 
     try:
+        identity = await resolve_identity(http_request)
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    try:
         hits = await semantic_search(
             query=request.query,
             top_k=request.top_k,
@@ -45,10 +54,11 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
             qdrant_client=qdrant_client,
             collection_name=settings.QDRANT_COLLECTION,
             request=http_request,
+            identity=identity,
         )
     except Exception as exc:
         logger.warning("Retrieval failed: %s — returning empty results", exc)
-        return QueryResponse(chunks=[], total=0)
+        hits = []
 
     chunks = [
         ChunkResult(
@@ -59,5 +69,21 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
         )
         for h in hits
     ]
+
+    caller_id = identity.sub if identity is not None else "anonymous"
+    applied = [TIER_0_TAG, *(identity.groups if identity is not None else ())]
+    try:
+        async for session in get_session():
+            session.add(
+                AuditLog(
+                    caller_id=caller_id,
+                    query_text=request.query,
+                    acl_tags_applied=applied,
+                    result_count=len(chunks),
+                )
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.error("Audit log write failed: %s", exc)
 
     return QueryResponse(chunks=chunks, total=len(chunks))

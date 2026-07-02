@@ -64,5 +64,16 @@ class Settings(BaseSettings):
     MCP_SSE_HOST: str = "127.0.0.1"
     MCP_SSE_PORT: int = 8765
 
+    # OIDC / Keycloak (Phase 7 squad ACLs); empty OIDC_ISSUER disables auth
+    OIDC_ISSUER: str = ""                 # e.g. "http://localhost:8081/realms/teamrag"
+    OIDC_AUDIENCE: str = "teamrag-gateway"
+    KEYCLOAK_BASE_URL: str = "http://localhost:8081"
+    KEYCLOAK_REALM: str = "teamrag"
+    KEYCLOAK_ADMIN_USER: str = "admin"
+    KEYCLOAK_ADMIN_PASSWORD: str = ""
+
+    # MCP → gateway bearer token (optional; forwarded as Authorization header)
+    TEAMRAG_BEARER_TOKEN: str = ""
+
 
 settings = Settings()

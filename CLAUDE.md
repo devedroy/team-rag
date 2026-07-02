@@ -60,7 +60,7 @@ The retrieval layer is LLM-agnostic: the backend does semantic search and return
 - **Alembic** — version-controlled schema migrations
 - **Pydantic** — request/response validation via `BaseModel`
 - **Qdrant** (v1.13.1) — vector database; native ACL filter DSL
-- **TEI** (Text Embeddings Inference) — CPU-friendly embedding server running BGE-M3 (~768-dim vectors)
+- **TEI** (Text Embeddings Inference) — CPU-friendly embedding server running BGE-M3 (1024-dim vectors)
 - **Postgres 16** — metadata, audit logs, ACL storage
 - **pytest + pytest-asyncio** — integration tests
 
@@ -319,7 +319,7 @@ Each phase is a vertical feature slice: ingest source → index → retrieve →
 
 ### Qdrant Collection Bootstrap
 
-In Phase 0, the collection doesn't exist yet. The test `test_qdrant_collection_exists()` auto-creates it if missing (768-dim COSINE distance). This is a one-time bootstrap; later phases assume it exists.
+In Phase 0, the collection doesn't exist yet. The test `test_qdrant_collection_exists()` auto-creates it if missing (1024-dim COSINE distance). This is a one-time bootstrap; later phases assume it exists.
 
 ```python
 # In test_phase0.py
@@ -329,7 +329,7 @@ except UnexpectedResponse:
     # Create minimal collection on first run
     await client.create_collection(
         collection_name="teamrag",
-        vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
     )
 ```
 
@@ -345,15 +345,23 @@ Migrations are version-controlled in `alembic/versions/`. Always use Alembic for
 
 Never manually run SQL DDL. Alembic tracks schema state and prevents conflicts.
 
-### ACL Model (Future Phases)
+### ACL Model (Phase 7 — shipped)
 
-Four tables form the ACL system:
+Four core tables form the ACL system:
 - **sources** — where data came from (Confluence page, GitHub PR, Teams/Webex thread)
 - **chunks** — indexed text segments, each with a source_id
 - **acl_tags** — many-to-many: chunk ↔ access tags (e.g., "tier-0", "squad-payments")
 - **audit_log** — immutable query log (who asked what, what ACL tags were applied, how many results)
 
-In Phase 0, these tables are empty. In Phase 5+, ACLs are enforced: query time checks `user's groups ∩ chunk's acl_tags ≠ ∅`.
+In Phase 0, these tables were empty. Phase 5 enforced tier-0-only filtering for unauthenticated callers. **Phase 7 adds authenticated, squad-scoped ACLs:**
+
+- **Keycloak** (`docker compose` service, `localhost:8081`, realm `teamrag`) is the identity provider. Dev users `alice` (member of `squad-payments`) and `bob` (no groups) ship in the seeded realm for local testing.
+- **`POST /query`, `POST /document`, and `/v1/chat/completions`** accept an optional `Authorization: Bearer <JWT>` header. `teamrag.auth` validates the token against Keycloak's JWKS (issuer/audience checked via `OIDC_ISSUER`/`OIDC_AUDIENCE`); a malformed/expired/wrong-signature token returns **401**. No token (or `OIDC_ISSUER` unset) falls back to unauthenticated tier-0-only visibility — Phase 5 behavior is preserved.
+- **`teamrag.acl.AclFilterMode`** has two modes: `UNAUTHENTICATED_TIER_0` and `AUTHENTICATED_GROUPS`. `resolve_acl_context(identity)` maps a validated `UserIdentity` (with `groups: tuple[str, ...]` from the JWT `groups` claim) to `AUTHENTICATED_GROUPS`, and `qdrant_filter_for_mode(mode, user_groups)` widens the Qdrant filter to `tier-0 ∪ user_groups` — so a query time check is effectively `user's groups ∩ chunk's acl_tags ≠ ∅` (tier-0 always included).
+- **`resource_acl_mappings`** table (`source_type`, `resource_key`, `acl_tags`) maps an external resource (e.g., a GitHub repo or Confluence space) to the ACL tags its chunks should carry. Ingestion connectors look up this table at chunk-write time to tag chunks beyond the tier-0 default.
+- **`python -m teamrag.sync`** refreshes `resource_acl_mappings` — either by fetching Keycloak group membership/attributes (`fetch_keycloak_groups` + `mappings_from_groups`), or by seeding a mapping directly via `--seed source_type:resource_key:tag1,tag2` (repeatable flag). See README "Phase 7" section for usage.
+- **`audit_log`** rows record `caller_id` (JWT subject, or `"anonymous"`) and `acl_tags_applied` (the resolved filter tags) per query — see `tests/integration/test_phase7_squad_acls.py::test_audit_log_records_squad_query`.
+- **MCP server** forwards an optional bearer token (`TEAMRAG_BEARER_TOKEN` env var) to the gateway on every tool call, so IDE assistants inherit the caller's ACL scope.
 
 ### Health Checks
 

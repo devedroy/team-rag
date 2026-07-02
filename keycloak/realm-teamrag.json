@@ -1,0 +1,64 @@
+{
+  "realm": "teamrag",
+  "enabled": true,
+  "requiredActions": [],
+  "groups": [
+    {"name": "squad-payments", "path": "/squad-payments"},
+    {"name": "squad-platform", "path": "/squad-platform"}
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "alice-password", "temporary": false}],
+      "requiredActions": [],
+      "groups": ["/squad-payments"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "bob-password", "temporary": false}],
+      "requiredActions": [],
+      "groups": []
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "teamrag-gateway",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "claim.name": "groups",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "teamrag-gateway",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

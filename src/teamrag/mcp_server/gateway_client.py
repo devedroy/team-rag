@@ -24,12 +24,17 @@ class TeamRagGateway:
         timeout: float = 60.0,
         *,
         asgi_app: Any | None = None,
+        bearer_token: str | None = None,
     ) -> None:
         self.base_url = (base_url or settings.TEAMRAG_GATEWAY_URL).rstrip("/")
         self.timeout = timeout
         self._asgi_app = asgi_app
+        if bearer_token is None:
+            bearer_token = settings.TEAMRAG_BEARER_TOKEN or None
+        self._bearer_token = bearer_token
 
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._bearer_token}"} if self._bearer_token else {}
         if self._asgi_app is not None:
             transport = httpx.ASGITransport(app=self._asgi_app)
             async with httpx.AsyncClient(
@@ -37,10 +42,10 @@ class TeamRagGateway:
                 base_url="http://teamrag.test",
                 timeout=self.timeout,
             ) as client:
-                response = await client.post(path, json=payload)
+                response = await client.post(path, json=payload, headers=headers)
         else:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(f"{self.base_url}{path}", json=payload)
+                response = await client.post(f"{self.base_url}{path}", json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
 

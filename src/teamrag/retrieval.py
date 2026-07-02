@@ -17,12 +17,15 @@ from teamrag.acl import (
     AclFilterMode,
     log_acl_filter_mode,
     qdrant_filter_for_mode,
+    resolve_acl_context,
     resolve_acl_filter_mode_from_request,
 )
 
 if TYPE_CHECKING:
     from fastapi import Request
     from qdrant_client import AsyncQdrantClient
+
+    from teamrag.auth import UserIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +62,21 @@ async def semantic_search(
     collection_name: str,
     request: "Request | None" = None,
     acl_mode: AclFilterMode | None = None,
+    identity: "UserIdentity | None" = None,
 ) -> list[ChunkHit]:
     """Run TEI embedding + Qdrant vector search with ACL filters."""
-    if acl_mode is None:
-        acl_mode = (
-            resolve_acl_filter_mode_from_request(request)
-            if request is not None
-            else AclFilterMode.UNAUTHENTICATED_TIER_0
-        )
+    if identity is not None:
+        acl_mode, user_groups = resolve_acl_context(identity)
+    else:
+        user_groups: tuple[str, ...] = ()
+        if acl_mode is None:
+            acl_mode = (
+                resolve_acl_filter_mode_from_request(request)
+                if request is not None
+                else AclFilterMode.UNAUTHENTICATED_TIER_0
+            )
     log_acl_filter_mode(acl_mode)
-    q_filter = qdrant_filter_for_mode(acl_mode)
+    q_filter = qdrant_filter_for_mode(acl_mode, user_groups)
 
     vector = await embed_query_text(query, tei_url)
 

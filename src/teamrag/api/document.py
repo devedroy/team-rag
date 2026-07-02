@@ -7,16 +7,17 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client import AsyncQdrantClient
 
 from teamrag.acl import (
     log_acl_filter_mode,
     qdrant_filter_scroll_by_source_url,
-    resolve_acl_filter_mode_from_request,
+    resolve_acl_context,
 )
 from teamrag.api.query import ChunkResult, QueryResponse
+from teamrag.auth import InvalidTokenError, resolve_identity
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -61,10 +62,15 @@ async def document(request: DocumentRequest, http_request: Request) -> QueryResp
     if qdrant_client is None:
         qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
 
+    try:
+        identity = await resolve_identity(http_request)
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
     variants = source_url_match_variants(request.source_url)
-    acl_mode = resolve_acl_filter_mode_from_request(http_request)
+    acl_mode, user_groups = resolve_acl_context(identity)
     log_acl_filter_mode(acl_mode)
-    flt = qdrant_filter_scroll_by_source_url(variants, acl_mode)
+    flt = qdrant_filter_scroll_by_source_url(variants, acl_mode, user_groups)
 
     collected: list[tuple[int, ChunkResult]] = []
     offset = None
