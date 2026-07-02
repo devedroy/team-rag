@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
 from teamrag.auth import InvalidTokenError, resolve_identity
+from teamrag.db.models import AuditLog
+from teamrag.db.session import get_session
 from teamrag.retrieval import semantic_search
 from teamrag.services.retrieval import ChunkResult
 
@@ -66,5 +68,21 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
         )
         for h in hits
     ]
+
+    caller_id = identity.sub if identity is not None else "anonymous"
+    applied = ["tier-0", *(identity.groups if identity is not None else ())]
+    try:
+        async for session in get_session():
+            session.add(
+                AuditLog(
+                    caller_id=caller_id,
+                    query_text=request.query,
+                    acl_tags_applied=applied,
+                    result_count=len(chunks),
+                )
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.warning("Audit log write failed: %s", exc)
 
     return QueryResponse(chunks=chunks, total=len(chunks))
