@@ -189,7 +189,7 @@ async def _run_jira() -> None:
             ("JIRA_API_TOKEN", settings.JIRA_API_TOKEN),
             ("JIRA_PROJECT_KEYS", settings.JIRA_PROJECT_KEYS),
         ]
-        if not val or val in ("https://your-org.atlassian.net",)
+        if not val or val in ("https://your-org.atlassian.net", "you@org.com", "your-token-here")
     ]
     if missing:
         logger.error(
