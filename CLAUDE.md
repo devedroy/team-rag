@@ -319,7 +319,7 @@ Each phase is a vertical feature slice: ingest source → index → retrieve →
 
 ### Qdrant Collection Bootstrap
 
-In Phase 0, the collection doesn't exist yet. The test `test_qdrant_collection_exists()` auto-creates it if missing (768-dim COSINE distance). This is a one-time bootstrap; later phases assume it exists.
+In Phase 0, the collection doesn't exist yet. The test `test_qdrant_collection_exists()` auto-creates it if missing (1024-dim COSINE distance). This is a one-time bootstrap; later phases assume it exists.
 
 ```python
 # In test_phase0.py
@@ -329,7 +329,7 @@ except UnexpectedResponse:
     # Create minimal collection on first run
     await client.create_collection(
         collection_name="teamrag",
-        vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
     )
 ```
 
