@@ -46,6 +46,7 @@ async def _run_confluence() -> None:
             ", ".join(missing),
         )
         sys.exit(1)
+    from teamrag.ingest.acl_mapping import apply_acl_mapping, load_acl_mappings
     from teamrag.ingest.confluence import ConfluenceClient
     from teamrag.ingest.pipeline import chunk_document, embed_chunks, upsert_to_qdrant, write_to_postgres
 
@@ -59,10 +60,13 @@ async def _run_confluence() -> None:
         chunks_total = 0
 
         async for session in get_session():
+            mappings = await load_acl_mappings(session)
             async for page in confluence.fetch_all_spaces():
                 chunks = chunk_document(page, settings.CONFLUENCE_URL)
                 if not chunks:
                     continue
+                for chunk in chunks:
+                    apply_acl_mapping(chunk, "confluence", mappings)
 
                 vectors = await embed_chunks(chunks, settings.TEI_URL)
                 await upsert_to_qdrant(chunks, vectors, qdrant, settings.QDRANT_COLLECTION)
@@ -105,6 +109,7 @@ async def _run_github() -> None:
         )
         sys.exit(1)
 
+    from teamrag.ingest.acl_mapping import apply_acl_mapping, load_acl_mappings
     from teamrag.ingest.github import (
         GitHubClient,
         assemble_pr_document,
@@ -124,6 +129,7 @@ async def _run_github() -> None:
 
         async with GitHubClient(settings) as github:
             async for session in get_session():
+                mappings = await load_acl_mappings(session)
                 for repo in repos:
                     logger.info("Starting ingest for repo: %s", repo)
                     async for pr in github.fetch_merged_prs(repo):
@@ -144,6 +150,8 @@ async def _run_github() -> None:
                         chunks = chunk_pr_document(pr, document)
                         if not chunks:
                             continue
+                        for chunk in chunks:
+                            apply_acl_mapping(chunk, "github", mappings)
 
                         vectors = await embed_chunks(chunks, settings.TEI_URL)
                         await upsert_to_qdrant(chunks, vectors, qdrant, settings.QDRANT_COLLECTION)
@@ -173,6 +181,7 @@ async def _run_teams_once() -> None:
 
     from teamrag.config import settings
     from teamrag.db.session import get_session
+    from teamrag.ingest.acl_mapping import load_acl_mappings
     from teamrag.ingest.teams import TeamsGraphClient, ingest_teams_channels
 
     missing = [
@@ -196,9 +205,10 @@ async def _run_teams_once() -> None:
     try:
         await _ensure_qdrant_collection(qdrant, settings)
         async for session in get_session():
+            mappings = await load_acl_mappings(session)
             async with TeamsGraphClient(settings) as graph:
                 n = await ingest_teams_channels(
-                    settings, graph, session, qdrant, settings.QDRANT_COLLECTION
+                    settings, graph, session, qdrant, settings.QDRANT_COLLECTION, mappings
                 )
                 logger.info("Teams ingest complete: %d thread chunks", n)
     finally:
@@ -210,6 +220,7 @@ async def _run_webex_once() -> None:
 
     from teamrag.config import settings
     from teamrag.db.session import get_session
+    from teamrag.ingest.acl_mapping import load_acl_mappings
     from teamrag.ingest.webex import WebexClient, ingest_webex_spaces
 
     missing = [
@@ -231,9 +242,10 @@ async def _run_webex_once() -> None:
     try:
         await _ensure_qdrant_collection(qdrant, settings)
         async for session in get_session():
+            mappings = await load_acl_mappings(session)
             async with WebexClient(settings) as wx:
                 n = await ingest_webex_spaces(
-                    settings, wx, session, qdrant, settings.QDRANT_COLLECTION
+                    settings, wx, session, qdrant, settings.QDRANT_COLLECTION, mappings
                 )
                 logger.info("Webex ingest complete: %d thread chunks", n)
     finally:

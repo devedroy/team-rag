@@ -259,7 +259,9 @@ async def ingest_webex_spaces(
     session: Any,
     qdrant: Any,
     collection_name: str,
+    mappings: dict[tuple[str, str], list[str]] | None = None,
 ) -> int:
+    from teamrag.ingest.acl_mapping import apply_acl_mapping
     from teamrag.ingest.pipeline import embed_chunks, upsert_to_qdrant, write_chat_thread_to_postgres
 
     org_id = settings.WEBEX_ORG_ID
@@ -305,6 +307,7 @@ async def ingest_webex_spaces(
             if not built:
                 continue
             chunk_dict, meta_json = built
+            apply_acl_mapping(chunk_dict, "webex", mappings or {})
             vectors = await embed_chunks([chunk_dict], settings.TEI_URL)
             await upsert_to_qdrant([chunk_dict], vectors, qdrant, collection_name)
             await write_chat_thread_to_postgres(
