@@ -1,4 +1,4 @@
-"""CLI entry point: python -m teamrag.ingest <confluence|github|teams|webex|chat> [--poll]"""
+"""CLI entry point: python -m teamrag.ingest <confluence|github|jira|teams|webex|chat> [--poll]"""
 
 from __future__ import annotations
 
@@ -176,6 +176,80 @@ async def _run_github() -> None:
         await qdrant.close()
 
 
+async def _run_jira() -> None:
+    from qdrant_client import AsyncQdrantClient
+
+    from teamrag.config import settings
+    from teamrag.db.session import get_session
+
+    missing = [
+        var for var, val in [
+            ("JIRA_URL", settings.JIRA_URL),
+            ("JIRA_EMAIL", settings.JIRA_EMAIL),
+            ("JIRA_API_TOKEN", settings.JIRA_API_TOKEN),
+            ("JIRA_PROJECT_KEYS", settings.JIRA_PROJECT_KEYS),
+        ]
+        if not val or val in ("https://your-org.atlassian.net",)
+    ]
+    if missing:
+        logger.error(
+            "Missing or unconfigured Jira credentials: %s. Set these in .env and retry.",
+            ", ".join(missing),
+        )
+        sys.exit(1)
+
+    from teamrag.ingest.acl_mapping import apply_acl_mapping, load_acl_mappings
+    from teamrag.ingest.jira import JiraClient, assemble_issue_document, chunk_issue_document
+    from teamrag.ingest.pipeline import (
+        embed_chunks,
+        upsert_to_qdrant,
+        write_chat_thread_to_postgres,
+    )
+
+    qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+    try:
+        await _ensure_qdrant_collection(qdrant, settings)
+
+        project_keys = [k.strip() for k in settings.JIRA_PROJECT_KEYS.split(",") if k.strip()]
+        issues_processed = 0
+
+        async with JiraClient(settings) as jira:
+            async for session in get_session():
+                mappings = await load_acl_mappings(session)
+                async for issue in jira.search_issues(project_keys, settings.JIRA_MAX_ISSUES):
+                    issue_key = issue.get("key", "")
+                    comments = await jira.fetch_comments(issue_key)
+                    document = assemble_issue_document(issue, comments)
+                    chunks = chunk_issue_document(issue, document, comments, settings.JIRA_URL)
+                    if not chunks:
+                        continue
+                    for chunk in chunks:
+                        apply_acl_mapping(chunk, "jira", mappings)
+
+                    vectors = await embed_chunks(chunks, settings.TEI_URL)
+                    await upsert_to_qdrant(chunks, vectors, qdrant, settings.QDRANT_COLLECTION)
+                    chunk = chunks[0]
+                    await write_chat_thread_to_postgres(
+                        source_type="jira",
+                        chunk=chunk,
+                        chunk_metadata={
+                            "issue_key": chunk["issue_key"],
+                            "project_key": chunk["project_key"],
+                            "status": chunk["status"],
+                            "resolution": chunk["resolution"],
+                            "labels": chunk["labels"],
+                            "epic": chunk["epic"],
+                            "linked_prs": chunk["linked_prs"],
+                        },
+                        session=session,
+                    )
+                    issues_processed += 1
+
+        logger.info("Jira ingest complete: %d issues processed", issues_processed)
+    finally:
+        await qdrant.close()
+
+
 async def _run_teams_once() -> None:
     from qdrant_client import AsyncQdrantClient
 
@@ -257,10 +331,12 @@ async def _run_chat_once() -> None:
     await _run_webex_once()
 
 
-async def _poll_loop(coro_factory, label: str) -> None:
+async def _poll_loop(coro_factory, label: str, interval_seconds: int | None = None) -> None:
     from teamrag.config import settings
 
-    interval = max(30, int(settings.CHAT_INGEST_POLL_INTERVAL_SECONDS))
+    if interval_seconds is None:
+        interval_seconds = settings.CHAT_INGEST_POLL_INTERVAL_SECONDS
+    interval = max(30, int(interval_seconds))
     while True:
         logger.info("Starting %s poll cycle", label)
         try:
@@ -276,8 +352,9 @@ def main() -> None:
     poll = "--poll" in sys.argv
     if not argv:
         print("Usage: python -m teamrag.ingest <source> [--poll]")
-        print("  Sources: confluence, github, teams, webex, chat")
-        print("  --poll  Run Teams/Webex/chat on CHAT_INGEST_POLL_INTERVAL_SECONDS (teams/webex/chat only).")
+        print("  Sources: confluence, github, jira, teams, webex, chat")
+        print("  --poll  Run Jira on JIRA_POLL_INTERVAL_SECONDS, or Teams/Webex/chat on")
+        print("          CHAT_INGEST_POLL_INTERVAL_SECONDS (jira/teams/webex/chat only).")
         sys.exit(1)
 
     source = argv[0].lower()
@@ -285,6 +362,13 @@ def main() -> None:
         asyncio.run(_run_confluence())
     elif source == "github":
         asyncio.run(_run_github())
+    elif source == "jira":
+        if poll:
+            from teamrag.config import settings
+
+            asyncio.run(_poll_loop(_run_jira, "jira", settings.JIRA_POLL_INTERVAL_SECONDS))
+        else:
+            asyncio.run(_run_jira())
     elif source == "teams":
         if poll:
             asyncio.run(_poll_loop(_run_teams_once, "teams"))
@@ -302,7 +386,7 @@ def main() -> None:
             asyncio.run(_run_chat_once())
     else:
         logger.error(
-            "Unknown source: %s. Valid sources: confluence, github, teams, webex, chat",
+            "Unknown source: %s. Valid sources: confluence, github, jira, teams, webex, chat",
             source,
         )
         sys.exit(1)
