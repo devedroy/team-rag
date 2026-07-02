@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
+from teamrag.acl import TIER_0_TAG
 from teamrag.auth import InvalidTokenError, resolve_identity
 from teamrag.db.models import AuditLog
 from teamrag.db.session import get_session
@@ -70,7 +71,7 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
     ]
 
     caller_id = identity.sub if identity is not None else "anonymous"
-    applied = ["tier-0", *(identity.groups if identity is not None else ())]
+    applied = [TIER_0_TAG, *(identity.groups if identity is not None else ())]
     try:
         async for session in get_session():
             session.add(
@@ -83,6 +84,6 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
             )
             await session.commit()
     except Exception as exc:
-        logger.warning("Audit log write failed: %s", exc)
+        logger.error("Audit log write failed: %s", exc)
 
     return QueryResponse(chunks=chunks, total=len(chunks))

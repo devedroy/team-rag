@@ -1,9 +1,16 @@
-"""Shared retrieval logic: embedding via TEI and vector search via Qdrant."""
+"""Shared retrieval logic: embedding via TEI.
+
+Vector search against Qdrant lives in ``teamrag.retrieval.semantic_search``,
+which is ACL-filtered. There is deliberately no unfiltered "search Qdrant and
+return whatever comes back" helper in this module — that primitive existed
+here previously (``retrieve_chunks``) and was a standing risk: any future
+caller could import it and bypass ACL enforcement entirely. Do not re-add it;
+use ``teamrag.retrieval.semantic_search`` instead.
+"""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import httpx
 from pydantic import BaseModel
@@ -28,42 +35,3 @@ async def embed_query(query: str, tei_url: str) -> list[float]:
         response.raise_for_status()
         embeddings = response.json()
         return embeddings[0]
-
-
-async def retrieve_chunks(
-    query: str,
-    qdrant_client: Any,
-    collection: str,
-    tei_url: str,
-    top_k: int,
-) -> list[ChunkResult]:
-    """Embed query and search Qdrant; returns empty list on any failure."""
-    try:
-        vector = await embed_query(query, tei_url)
-    except Exception as exc:
-        logger.warning("TEI embedding failed during retrieval: %s", exc)
-        return []
-
-    try:
-        results = await qdrant_client.query_points(
-            collection_name=collection,
-            query=vector,
-            limit=top_k,
-            with_payload=True,
-        )
-    except Exception as exc:
-        logger.warning("Qdrant query failed during retrieval: %s", exc)
-        return []
-
-    chunks: list[ChunkResult] = []
-    for hit in results.points:
-        payload = hit.payload or {}
-        chunks.append(
-            ChunkResult(
-                content=payload.get("content", ""),
-                source_url=payload.get("source_url", ""),
-                page_title=payload.get("page_title", ""),
-                score=hit.score,
-            )
-        )
-    return chunks

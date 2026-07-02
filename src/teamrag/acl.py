@@ -1,9 +1,23 @@
 """Tier and ACL tag constants plus Qdrant filter helpers.
 
-Phase 5 enforces **unauthenticated = tier-0 visibility** at retrieval time.
-Authenticated callers with IdP-derived ``user_groups`` are deferred (roadmap
-Phase 7+); all traffic today is treated as unauthenticated and filtered in
-Qdrant to points whose ``acl_tags`` payload includes ``tier-0``.
+Current retrieval-time ACL model (Phase 7):
+
+- **Unauthenticated** callers (no ``Authorization`` header, or auth disabled
+  via unset ``OIDC_ISSUER``) are filtered to tier-0 only — the tier-0/public
+  visibility introduced in Phase 5.
+- **Authenticated** callers present a Bearer JWT validated by
+  ``teamrag.auth`` (signature, issuer, audience, expiry against the IdP's
+  JWKS). Their identity carries a ``groups`` tuple pulled from the token's
+  ``groups`` claim; retrieval widens the Qdrant filter to tier-0 **union**
+  those group tags.
+- **Group name == ACL tag.** A chunk's ``acl_tags`` payload is matched
+  directly against the caller's token groups — there is no separate mapping
+  table consulted at query time (mapping happens at ingest/sync time, see
+  ``teamrag.sync``). Because group names are treated as ACL tags, the
+  ``tier-*`` prefix is reserved for system-assigned tiers (``tier-0``,
+  ``tier-1``, ...); ``teamrag.auth._normalize_groups`` strips any IdP group
+  literally named ``tier-*`` before it reaches this module, so it can never
+  be used as a skeleton key for tier-scoped content.
 """
 
 from __future__ import annotations

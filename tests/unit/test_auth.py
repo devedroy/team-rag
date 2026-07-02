@@ -57,6 +57,18 @@ def test_decode_strips_leading_slash_from_groups(rsa_key):
     assert ident.groups == ("squad-payments",)
 
 
+def test_decode_strips_reserved_tier_groups(rsa_key):
+    """`tier-*` is the reserved system-tier namespace (see teamrag.acl); a
+
+    Keycloak group literally named e.g. "tier-1" must not be honored as a
+    caller-supplied group, or it would act as a skeleton key granting every
+    tier-1 chunk.
+    """
+    token = _make_token(rsa_key, groups=("tier-1", "squad-payments"))
+    ident = decode_token(token, signing_key=rsa_key.public_key(), issuer=ISSUER, audience=AUDIENCE)
+    assert ident.groups == ("squad-payments",)
+
+
 def test_decode_missing_groups_claim_defaults_empty(rsa_key):
     now = int(time.time())
     token = jwt.encode(
@@ -185,3 +197,40 @@ async def test_resolve_identity_malformed_jwks_body_raises_invalid_token(
     token = _make_token(rsa_key, kid="any-kid")
     with pytest.raises(InvalidTokenError):
         await resolve_identity(_FakeRequest({"authorization": f"Bearer {token}"}))
+
+
+async def test_resolve_identity_unknown_kid_does_not_stampede_jwks(enabled_auth, monkeypatch, rsa_key):
+    """Two back-to-back requests with an unknown kid should fetch JWKS once.
+
+    Without a negative-cache guard, every request bearing a bogus/unknown kid
+    would force its own fresh JWKS fetch against the IdP — an unauthenticated
+    caller could amplify load arbitrarily just by sending garbage kids.
+    """
+    jwks = {"keys": [_jwk_for(rsa_key.public_key(), "good-kid")]}
+    fetch_count = 0
+
+    class _CountingFakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url):
+            nonlocal fetch_count
+            fetch_count += 1
+            return _FakeResponse(jwks)
+
+    monkeypatch.setattr(auth.httpx, "AsyncClient", _CountingFakeAsyncClient)
+
+    token = _make_token(rsa_key, kid="other-kid")
+
+    with pytest.raises(InvalidTokenError):
+        await resolve_identity(_FakeRequest({"authorization": f"Bearer {token}"}))
+    with pytest.raises(InvalidTokenError):
+        await resolve_identity(_FakeRequest({"authorization": f"Bearer {token}"}))
+
+    assert fetch_count == 1

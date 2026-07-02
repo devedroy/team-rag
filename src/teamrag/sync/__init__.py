@@ -122,3 +122,51 @@ async def upsert_mappings(session, rows: list[MappingRow]) -> int:
         count += 1
     await session.commit()
     return count
+
+
+def keys_to_prune(
+    existing_keys: "set[tuple[str, str]]", fetched_keys: "set[tuple[str, str]]"
+) -> "set[tuple[str, str]]":
+    """Pure: mapping keys present in the DB but absent from a fresh fetch.
+
+    Used only by the **full sync** path (not ``--seed``): a full Keycloak
+    fetch is authoritative for "what should exist right now," so anything
+    previously upserted but no longer reported by any group's attributes has
+    had its access revoked and must be deleted — otherwise a stale mapping
+    row keeps granting access to a resource nothing points at anymore, and
+    revocation never converges. ``--seed`` writes a partial, hand-picked set
+    of rows and is never a full picture, so it must never prune.
+    """
+    return existing_keys - fetched_keys
+
+
+async def prune_stale_mappings(session, fetched_rows: list[MappingRow]) -> int:
+    """Delete ``resource_acl_mappings`` rows absent from ``fetched_rows``.
+
+    Call only after a full Keycloak sync's ``upsert_mappings`` has run in the
+    same sync pass. Never call this for ``--seed`` runs.
+    """
+    import sqlalchemy as sa
+
+    from teamrag.db.models import ResourceAclMapping
+
+    fetched_keys = {(source_type, resource_key) for source_type, resource_key, _tags in fetched_rows}
+
+    result = await session.execute(
+        sa.select(ResourceAclMapping.source_type, ResourceAclMapping.resource_key)
+    )
+    existing_keys = {(row[0], row[1]) for row in result.all()}
+
+    stale = keys_to_prune(existing_keys, fetched_keys)
+    if not stale:
+        return 0
+
+    for source_type, resource_key in stale:
+        await session.execute(
+            sa.delete(ResourceAclMapping).where(
+                ResourceAclMapping.source_type == source_type,
+                ResourceAclMapping.resource_key == resource_key,
+            )
+        )
+    await session.commit()
+    return len(stale)

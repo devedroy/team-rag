@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 _JWKS_CACHE: dict[str, Any] = {}   # jwks_url -> {"fetched_at": float, "keys": {kid: key}}
 _JWKS_TTL_SECONDS = 300.0
+_JWKS_MIN_REFETCH_INTERVAL_SECONDS = 30.0
 
 
 class InvalidTokenError(Exception):
@@ -34,9 +35,20 @@ class UserIdentity:
 
 
 def _normalize_groups(raw: Any) -> tuple[str, ...]:
+    # Group names double as the ACL tag namespace (see teamrag.acl): a chunk
+    # tagged "squad-payments" is visible to anyone whose token carries a
+    # "squad-payments" group. The "tier-*" prefix is reserved for the
+    # system-assigned visibility tiers (tier-0 public, tier-1 squad-scoped).
+    # Any IdP-side group literally named e.g. "tier-1" must not be honored
+    # here — it would silently grant that member every private chunk in
+    # tier-1, a skeleton key. Strip such groups before they reach ACL checks.
     if not isinstance(raw, list):
         return ()
-    return tuple(str(g).lstrip("/") for g in raw if str(g).lstrip("/"))
+    return tuple(
+        g
+        for g in (str(item).lstrip("/") for item in raw)
+        if g and not g.lower().startswith("tier-")
+    )
 
 
 def decode_token(token: str, *, signing_key, issuer: str, audience: str | None) -> UserIdentity:
@@ -66,7 +78,21 @@ def _clear_jwks_cache() -> None:
 
 async def _get_signing_key(jwks_url: str, kid: str):
     entry = _JWKS_CACHE.get(jwks_url)
-    if entry is None or time.monotonic() - entry["fetched_at"] > _JWKS_TTL_SECONDS or kid not in entry["keys"]:
+    now = time.monotonic()
+    needs_fetch = entry is None or now - entry["fetched_at"] > _JWKS_TTL_SECONDS
+
+    if not needs_fetch and kid not in entry["keys"]:
+        # Unknown kid within a fresh cache entry: only worth a fresh fetch if
+        # we haven't just fetched. Without this guard, a flood of requests
+        # bearing a bogus/unknown kid would each force their own JWKS fetch
+        # against the IdP — an easy stampede for an unauthenticated caller to
+        # trigger. Fail closed instead of refetching within the window.
+        if now - entry["fetched_at"] >= _JWKS_MIN_REFETCH_INTERVAL_SECONDS:
+            needs_fetch = True
+        else:
+            raise InvalidTokenError(f"No signing key for kid={kid!r}")
+
+    if needs_fetch:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(jwks_url)
             response.raise_for_status()
@@ -82,8 +108,9 @@ async def _get_signing_key(jwks_url: str, kid: str):
                 keys[kid_value] = jwt.PyJWK(jwk_dict).key
             except jwt.PyJWKError:
                 continue
-        entry = {"fetched_at": time.monotonic(), "keys": keys}
+        entry = {"fetched_at": now, "keys": keys}
         _JWKS_CACHE[jwks_url] = entry
+
     key = entry["keys"].get(kid)
     if key is None:
         raise InvalidTokenError(f"No signing key for kid={kid!r}")

@@ -14,7 +14,17 @@ logger = logging.getLogger(__name__)
 async def _run(seed_rows) -> None:
     from teamrag.config import settings
     from teamrag.db.session import get_session
-    from teamrag.sync import fetch_keycloak_groups, mappings_from_groups, upsert_mappings
+    from teamrag.sync import (
+        fetch_keycloak_groups,
+        mappings_from_groups,
+        prune_stale_mappings,
+        upsert_mappings,
+    )
+
+    # --seed writes a partial, hand-picked set of rows and is never a full
+    # picture of what should exist — only a full Keycloak fetch is
+    # authoritative enough to prune mappings that have fallen off.
+    is_full_sync = not seed_rows
 
     if seed_rows:
         rows = seed_rows
@@ -35,6 +45,9 @@ async def _run(seed_rows) -> None:
     async for session in get_session():
         written = await upsert_mappings(session, rows)
         logger.info("Upserted %d resource ACL mapping(s)", written)
+        if is_full_sync:
+            pruned = await prune_stale_mappings(session, rows)
+            logger.info("Pruned %d stale resource ACL mapping(s)", pruned)
 
 
 def main() -> None:
