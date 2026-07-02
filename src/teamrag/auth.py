@@ -73,10 +73,13 @@ async def _get_signing_key(jwks_url: str, kid: str):
             data = response.json()
         keys = {}
         for jwk_dict in data.get("keys", []):
+            kid_value = jwk_dict.get("kid")
+            if not kid_value:
+                continue
             if jwk_dict.get("use") not in (None, "sig"):
                 continue
             try:
-                keys[jwk_dict["kid"]] = jwt.PyJWK(jwk_dict).key
+                keys[kid_value] = jwt.PyJWK(jwk_dict).key
             except jwt.PyJWKError:
                 continue
         entry = {"fetched_at": time.monotonic(), "keys": keys}
@@ -108,8 +111,11 @@ async def resolve_identity(request: Any) -> UserIdentity | None:
     jwks_url = f"{settings.OIDC_ISSUER.rstrip('/')}/protocol/openid-connect/certs"
     try:
         signing_key = await _get_signing_key(jwks_url, unverified.get("kid", ""))
-    except httpx.HTTPError as exc:
-        # Fail closed: cannot verify → treat as invalid rather than downgrade.
+    except (httpx.HTTPError, ValueError) as exc:
+        # Fail closed: cannot verify (network error or malformed JWKS body,
+        # json.JSONDecodeError subclasses ValueError) → treat as invalid
+        # rather than downgrade.
+        logger.warning("JWKS fetch/parse failed for %s: %s", jwks_url, exc)
         raise InvalidTokenError(f"JWKS fetch failed: {exc}") from exc
 
     return decode_token(
