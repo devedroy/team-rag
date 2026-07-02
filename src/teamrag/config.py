@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     GITHUB_REPOS: str = ""            # comma-separated, e.g. "org/repo1,org/repo2"
     GITHUB_MAX_PRS: int = 200
 
+    # Jira Cloud connector — Phase 8 ticket ingest
+    JIRA_URL: str = "https://your-org.atlassian.net"
+    JIRA_EMAIL: str = ""
+    JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEYS: str = ""       # comma-separated, e.g. "ENG,PAY"
+    JIRA_MAX_ISSUES: int = 200
+    JIRA_POLL_INTERVAL_SECONDS: int = 300
+
     # Microsoft Teams (Graph) — Phase 6 chat ingest
     TEAMS_TENANT_ID: str = ""
     TEAMS_CLIENT_ID: str = ""
