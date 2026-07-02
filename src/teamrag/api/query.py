@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
+from teamrag.auth import InvalidTokenError, resolve_identity
 from teamrag.retrieval import semantic_search
 from teamrag.services.retrieval import ChunkResult
 
@@ -38,6 +39,11 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
         qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
 
     try:
+        identity = await resolve_identity(http_request)
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    try:
         hits = await semantic_search(
             query=request.query,
             top_k=request.top_k,
@@ -45,6 +51,7 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
             qdrant_client=qdrant_client,
             collection_name=settings.QDRANT_COLLECTION,
             request=http_request,
+            identity=identity,
         )
     except Exception as exc:
         logger.warning("Retrieval failed: %s — returning empty results", exc)
