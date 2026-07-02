@@ -57,7 +57,7 @@ async def query(request: QueryRequest, http_request: Request) -> QueryResponse:
         )
     except Exception as exc:
         logger.warning("Retrieval failed: %s — returning empty results", exc)
-        return QueryResponse(chunks=[], total=0)
+        hits = []
 
     chunks = [
         ChunkResult(
