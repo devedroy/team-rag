@@ -201,16 +201,16 @@ async def list_models():
 
 @router.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest, http_request: Request):
+    try:
+        identity = await resolve_identity(http_request)
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
     if not settings.LLM_BASE_URL:
         msg = "LLM_BASE_URL is not configured. Set it in .env to enable chat completions."
         if request.stream:
             return _empty_streaming_response(msg)
         return JSONResponse(content=_empty_non_streaming_response(msg))
-
-    try:
-        identity = await resolve_identity(http_request)
-    except InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     user_messages = [m for m in request.messages if m.role == "user"]
     if not user_messages:

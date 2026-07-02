@@ -41,6 +41,31 @@ async def test_document_with_garbage_token_returns_401(oidc_enabled):
 
 
 @pytest.mark.asyncio
+async def test_chat_with_garbage_token_returns_401_even_when_llm_unset(
+    oidc_enabled, monkeypatch
+):
+    monkeypatch.setattr(settings, "LLM_BASE_URL", "")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "hi"}]},
+            headers={"Authorization": "Bearer not-a-jwt"},
+        )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_chat_without_token_still_200_when_oidc_enabled(oidc_enabled, monkeypatch):
+    monkeypatch.setattr(settings, "LLM_BASE_URL", "")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_query_without_token_still_200_when_oidc_enabled(oidc_enabled):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         response = await client.post("/query", json={"query": "x", "top_k": 1})
