@@ -22,7 +22,7 @@ pytestmark = pytest.mark.asyncio
 
 CONFLUENCE_TOKEN = os.getenv("CONFLUENCE_API_TOKEN", "")
 skip_if_no_confluence = pytest.mark.skipif(
-    not CONFLUENCE_TOKEN,
+    not CONFLUENCE_TOKEN or CONFLUENCE_TOKEN in ("", "your-token-here"),
     reason="CONFLUENCE_API_TOKEN not set — skipping Confluence integration tests",
 )
 
