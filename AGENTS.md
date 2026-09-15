@@ -1,11 +1,11 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Project Overview
 
 **TeamRag** is a self-hosted RAG (Retrieval-Augmented Generation) system for engineering teams. It provides two interfaces:
-1. **MCP server** — for AI coding assistants (Claude Code, Cursor, Continue.dev)
+1. **MCP server** — for AI coding assistants (Codex, Cursor, Continue.dev)
 2. **Chat UI** — for engineers asking questions (Open WebUI or LibreChat)
 
 The retrieval layer is LLM-agnostic: the backend does semantic search and returns ranked chunks; the frontend LLM synthesizes answers and cites sources.
@@ -21,7 +21,7 @@ The retrieval layer is LLM-agnostic: the backend does semantic search and return
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    External Interfaces                      │
-│  IDE (Claude Code / Cursor)    │    Chat UI (Open WebUI)     │
+│  IDE (Codex / Cursor)    │    Chat UI (Open WebUI)     │
 └────────────────┬───────────────────────┬────────────────────┘
                  │                       │
           ┌──────┴───────────────────────┴──────┐

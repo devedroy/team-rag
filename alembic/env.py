@@ -18,6 +18,9 @@ if config.config_file_name is not None:
 # Alembic requires a synchronous driver, so convert asyncpg → psycopg2.
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
+    from teamrag.config import settings
+    database_url = settings.DATABASE_URL
+if not database_url:
     raise RuntimeError("DATABASE_URL environment variable is required for Alembic migrations")
 database_url = re.sub(r"^postgresql\+[^:]+://", "postgresql://", database_url)
 config.set_main_option("sqlalchemy.url", database_url)

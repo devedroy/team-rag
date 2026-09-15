@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# BGE-M3 (served by TEI) emits 1024-dim dense vectors; the Qdrant collection
+# must be created with the same size or upserts fail.
+EMBEDDING_DIM = 1024
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -25,6 +29,14 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     GITHUB_REPOS: str = ""            # comma-separated, e.g. "org/repo1,org/repo2"
     GITHUB_MAX_PRS: int = 200
+
+    # Jira Cloud connector — Phase 8 ticket ingest
+    JIRA_URL: str = "https://your-org.atlassian.net"
+    JIRA_EMAIL: str = ""
+    JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEYS: str = ""       # comma-separated, e.g. "ENG,PAY"
+    JIRA_MAX_ISSUES: int = 200
+    JIRA_POLL_INTERVAL_SECONDS: int = 300
 
     # Microsoft Teams (Graph) — Phase 6 chat ingest
     TEAMS_TENANT_ID: str = ""
@@ -59,6 +71,17 @@ class Settings(BaseSettings):
     # MCP HTTP SSE transport (see `teamrag-mcp --transport sse`)
     MCP_SSE_HOST: str = "127.0.0.1"
     MCP_SSE_PORT: int = 8765
+
+    # OIDC / Keycloak (Phase 7 squad ACLs); empty OIDC_ISSUER disables auth
+    OIDC_ISSUER: str = ""                 # e.g. "http://localhost:8081/realms/teamrag"
+    OIDC_AUDIENCE: str = "teamrag-gateway"
+    KEYCLOAK_BASE_URL: str = "http://localhost:8081"
+    KEYCLOAK_REALM: str = "teamrag"
+    KEYCLOAK_ADMIN_USER: str = "admin"
+    KEYCLOAK_ADMIN_PASSWORD: str = ""
+
+    # MCP → gateway bearer token (optional; forwarded as Authorization header)
+    TEAMRAG_BEARER_TOKEN: str = ""
 
 
 settings = Settings()

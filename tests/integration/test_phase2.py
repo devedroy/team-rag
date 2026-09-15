@@ -14,7 +14,10 @@ import pytest_asyncio
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 SKIP_REASON = "GITHUB_TOKEN not set — skipping GitHub integration tests"
-pytestmark = pytest.mark.skipif(not GITHUB_TOKEN, reason=SKIP_REASON)
+pytestmark = pytest.mark.skipif(
+    not GITHUB_TOKEN or GITHUB_TOKEN in ("", "ghp_your_token_here"),
+    reason=SKIP_REASON,
+)
 
 
 @pytest.fixture(scope="module")

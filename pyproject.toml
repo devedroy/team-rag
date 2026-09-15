@@ -23,6 +23,7 @@ dependencies = [
     "llama-index-core>=0.10.0",
     "tenacity>=8.2.0",
     "mcp>=1.8.0",
+    "pyjwt[crypto]>=2.8",
 ]
 
 [project.optional-dependencies]

@@ -14,6 +14,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sqlalchemy import delete, select
 
+from teamrag.config import EMBEDDING_DIM
 from teamrag.main import app
 
 pytestmark = pytest.mark.asyncio
@@ -31,7 +32,7 @@ async def _ensure_collection(client: AsyncQdrantClient, name: str) -> None:
     except Exception:
         await client.create_collection(
             collection_name=name,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
         )
 
 

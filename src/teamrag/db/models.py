@@ -113,3 +113,26 @@ class AuditLog(Base):
         nullable=False,
         server_default=sa.func.now(),
     )
+
+
+class ResourceAclMapping(Base):
+    __tablename__ = "resource_acl_mappings"
+    __table_args__ = (
+        sa.UniqueConstraint("source_type", "resource_key", name="uq_resource_acl_mappings_type_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=sa.text("gen_random_uuid()"),
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    resource_key: Mapped[str] = mapped_column(Text, nullable=False)
+    acl_tags: Mapped[list[str]] = mapped_column(postgresql.ARRAY(Text), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+    )

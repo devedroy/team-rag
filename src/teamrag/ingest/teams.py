@@ -248,8 +248,10 @@ async def ingest_teams_channels(
     session: Any,
     qdrant: Any,
     collection_name: str,
+    mappings: dict[tuple[str, str], list[str]] | None = None,
 ) -> int:
     """Enumerate teams/channels and upsert thread chunks. Returns chunk count."""
+    from teamrag.ingest.acl_mapping import apply_acl_mapping
     from teamrag.ingest.pipeline import embed_chunks, upsert_to_qdrant, write_chat_thread_to_postgres
 
     tenant_id = settings.TEAMS_TENANT_ID
@@ -302,6 +304,7 @@ async def ingest_teams_channels(
                 if not built:
                     continue
                 chunk_dict, meta_json = built
+                apply_acl_mapping(chunk_dict, "teams", mappings or {})
                 vectors = await embed_chunks([chunk_dict], settings.TEI_URL)
                 await upsert_to_qdrant([chunk_dict], vectors, qdrant, collection_name)
                 await write_chat_thread_to_postgres(
